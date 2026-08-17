@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/package-manager",
+]
+# Deferred (not yet members):
+# - crates/runtime
+# - crates/bundler
+# - crates/test-runner
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/bluesky/ava"
+
+[workspace.dependencies]
+# shared deps go here as crates land

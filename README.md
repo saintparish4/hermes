@@ -1,4 +1,4 @@
-# ava: Ultrafast JavaScript runtime + toolkit, shipped as a single native binary
+# AVA: Ultrafast JavaScript runtime + toolkit, shipped as a single native binary
 
 Ava is a Node.js-compatible package manager (with a runtime, bundler, and test runner planned for later phases) intended as a dramatically faster replacement for npm, yarn, and pnpm. It's being built as a standalone tool that works in existing Node.js projects — if a project has a `package.json`, `ava install` should work on it.
 

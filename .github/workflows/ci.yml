@@ -11,8 +11,12 @@ env:
 
 jobs:
   ci:
-    name: Install, format, lint, test, build
-    runs-on: ubuntu-latest
+    name: Install, format, lint, test, build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,11 +31,47 @@ jobs:
       - name: Format
         run: cargo fmt --check
 
+      # Workspace-scoped: the CLI is the root package, the logic is in crates/package-manager.
+      # No --all-features — that would opt this job into `jsc`, and its value is proving the
+      # default build needs no JavaScriptCore.
       - name: Lint
-        run: cargo clippy -p ava-package-manager -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
       - name: Test
-        run: cargo test -p ava-package-manager
+        run: cargo test --workspace
 
       - name: Build
-        run: cargo build -p ava-package-manager
+        run: cargo build --workspace
+
+  # Separate from `ci` on purpose: that job's value is proving the default build needs no
+  # JavaScriptCore, so it must never gain a JSC install step or --features jsc.
+  #
+  # Add an OS to this matrix only once that platform's spike passes locally. A permanently-red
+  # job trains people to ignore red CI, which is worse than having no signal for that platform.
+  jsc-spike:
+    name: JSC spike (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # bindgen needs libclang on every build machine; ubuntu-latest already ships it.
+      - name: Install JavaScriptCore (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libjavascriptcoregtk-6.0-dev
+
+      - name: Lint
+        run: cargo clippy -p ava-package-manager --features jsc --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test -p ava-package-manager --features jsc

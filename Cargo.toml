@@ -1,0 +1,39 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/hermes-core",
+    "crates/hermes-cli",
+    "crates/hermes-api",
+    "crates/hermes-scan",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+hermes-core = { path = "crates/hermes-core" }
+hermes-cli = { path = "crates/hermes-cli" }
+hermes-api = { path = "crates/hermes-api" }
+hermes-scan = { path = "crates/hermes-scan" }
+
+   
+alloy = { version = "2", default-features = false, features = ["provider-http", "rpc-types-eth", "reqwest-rustls-tls"] }
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "sqlite", "macros", "migrate"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower-http = { version = "0.7", features = ["fs", "trace", "cors"] }
+clap = { version = "4", features = ["derive", "env"] }
+futures = "0.3"
+# Clippy renamed `cyclomatic_complexity` to `cognitive_complexity` in Rust 1.35; there is no
+# cyclomatic lint any more. It lives in the nursery group, which `-D warnings` never reaches,
+# so it has to be named explicitly here. Threshold is set in `clippy.toml`.
+[workspace.lints.clippy]
+cognitive_complexity = "deny"

@@ -1,0 +1,21 @@
+[package]
+name = "hermes-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+hermes-core.workspace = true
+axum.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tower-http.workspace = true
+
+[dev-dependencies]
+tower = "0.5"
+http-body-util = "0.1"
+[lints]
+workspace = true

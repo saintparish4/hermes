@@ -10,18 +10,20 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ci:
-    name: Install, format, lint, test, build (${{ matrix.os }})
+  rust:
+    name: fmt, clippy, test, build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows is deliberately absent: it triples CI time for a Linux-deployed binary.
+        # Add it back only if Windows artifacts ever ship.
+        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # rust-toolchain.toml pins the channel + components; this installs exactly that.
+      # rust-toolchain.toml pins the channel and components; this installs exactly that.
       - name: Install Rust toolchain
         run: rustup show
 
@@ -31,47 +33,14 @@ jobs:
       - name: Format
         run: cargo fmt --check
 
-      # Workspace-scoped: the CLI is the root package, the logic is in crates/package-manager.
-      # No --all-features — that would opt this job into `jsc`, and its value is proving the
-      # default build needs no JavaScriptCore.
+      # --all-targets so test code is linted too; the cognitive-complexity gate configured in
+      # clippy.toml is worth nothing if it skips half the workspace.
       - name: Lint
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # No network in any test: every one is pure or backed by sqlite::memory:.
       - name: Test
         run: cargo test --workspace
 
       - name: Build
-        run: cargo build --workspace
-
-  # Separate from `ci` on purpose: that job's value is proving the default build needs no
-  # JavaScriptCore, so it must never gain a JSC install step or --features jsc.
-  #
-  # Add an OS to this matrix only once that platform's spike passes locally. A permanently-red
-  # job trains people to ignore red CI, which is worse than having no signal for that platform.
-  jsc-spike:
-    name: JSC spike (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        run: rustup show
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      # bindgen needs libclang on every build machine; ubuntu-latest already ships it.
-      - name: Install JavaScriptCore (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libjavascriptcoregtk-6.0-dev
-
-      - name: Lint
-        run: cargo clippy -p ava-package-manager --features jsc --all-targets -- -D warnings
-
-      - name: Test
-        run: cargo test -p ava-package-manager --features jsc
+        run: cargo build --workspace --locked

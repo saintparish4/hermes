@@ -1,0 +1,3 @@
+# Default is 25. Tightened because the authority resolver I am about to write is exactly the
+# shape that accretes match arms and early returns until nobody can say what it does on a cycle.
+cognitive-complexity-threshold = 15

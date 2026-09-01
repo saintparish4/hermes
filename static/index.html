@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermes — Base proxy scan</title>
+<style>
+  :root{
+    --bg:#f4f1ea; --fg:#1a1a1a; --muted:#4e4d4d; --line:#dcd7cc;
+    --card:#fffdf8; --coral:#ff9473; --sky:#a0b5eb; --mint:#a7fccd;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#141414; --fg:#f0ede6; --muted:#a6a29a; --line:#2e2e2e; --card:#1c1c1c; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:16px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+       padding:2rem 1.25rem;}
+  .wrap{max-width:1100px;margin:0 auto}
+  h1{font-size:1.6rem;margin:0 0 .25rem;letter-spacing:-.01em}
+  .sub{color:var(--muted);margin:0 0 1.5rem;max-width:62ch}
+  .stats{display:flex;flex-wrap:wrap;gap:.75rem;margin-bottom:1.5rem}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:8px;
+        padding:.6rem .9rem;min-width:9rem}
+  .stat b{display:block;font-size:1.35rem}
+  .stat span{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.06em}
+  .controls{display:flex;gap:.75rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap}
+  input[type=search]{background:var(--card);border:1px solid var(--line);color:var(--fg);
+        border-radius:6px;padding:.45rem .6rem;font:inherit;font-size:.9rem;min-width:16rem}
+  label{color:var(--muted);font-size:.85rem;display:flex;gap:.35rem;align-items:center}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;font-size:.85rem}
+  th,td{padding:.5rem .7rem;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{position:sticky;top:0;background:var(--card);cursor:pointer;user-select:none;
+     font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+  th:hover{color:var(--fg)}
+  tr:last-child td{border-bottom:none}
+  a{color:inherit}
+  .tag{display:inline-block;padding:.1rem .45rem;border-radius:4px;font-size:.72rem;
+       border:1px solid var(--line)}
+  .transparent{background:var(--coral);color:#1a1a1a;border-color:transparent}
+  .uups{background:var(--sky);color:#1a1a1a;border-color:transparent}
+  .beacon{background:var(--mint);color:#1a1a1a;border-color:transparent}
+  .eip1822{background:#e6d3ff;color:#1a1a1a;border-color:transparent}
+  .mono{color:var(--muted)}
+  footer{margin-top:2rem;color:var(--muted);font-size:.8rem;max-width:70ch}
+  .err{background:var(--coral);color:#1a1a1a;padding:.75rem 1rem;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Hermes — Base proxy scan</h1>
+  <p class="sub">
+    Every address below was probed directly for its ERC-1967 / EIP-1822 storage slots on Base
+    mainnet. Right now this reports each proxy's <em>immediate</em> admin. It does not yet
+    resolve that admin to a terminal authority, and it does not price anything.
+  </p>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="filter by address, label or admin…" autocomplete="off">
+    <label><input type="checkbox" id="all"> show non-proxies</label>
+    <span class="mono" id="count"></span>
+  </div>
+
+  <div class="scroll">
+    <table>
+      <thead><tr>
+        <th data-k="label">Label</th>
+        <th data-k="address">Address</th>
+        <th data-k="kind">Kind</th>
+        <th data-k="implementation">Implementation</th>
+        <th data-k="admin">Admin</th>
+        <th data-k="code_size">Code</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <footer>
+    <p><strong>Coverage.</strong> Only ERC-1967 (transparent, UUPS, beacon) and EIP-1822 are
+    detected. Contracts using inherited storage, eternal storage, Diamond/EIP-2535, or the
+    pre-1967 <code>org.zeppelinos</code> slot are indexed but <em>not</em> counted as covered —
+    USDC on Base is one of them. A pattern this scan cannot see is named here rather than
+    silently omitted.</p>
+    <p>API: <a href="/proxies">/proxies</a> · <a href="/authorities">/authorities</a> ·
+       <a href="/coverage">/coverage</a></p>
+  </footer>
+</div>
+
+<script>
+const short = a => a ? a.slice(0,10) + '…' + a.slice(-6) : '—';
+const bs = a => `https://basescan.org/address/${a}`;
+let data = [], sortKey = 'code_size', sortDir = -1;
+
+async function load(){
+  const all = document.getElementById('all').checked;
+  const rows = document.getElementById('rows');
+  try{
+    const [p, c] = await Promise.all([
+      fetch('/proxies' + (all ? '?all=true' : '')).then(r => r.json()),
+      fetch('/coverage').then(r => r.json())
+    ]);
+    data = p.proxies || [];
+    renderStats(c);
+    render();
+  }catch(e){
+    rows.innerHTML = `<tr><td colspan="6"><div class="err">Could not reach the API: ${e}</div></td></tr>`;
+  }
+}
+
+function renderStats(c){
+  const pct = c.total_scanned ? Math.round(100 * c.covered_proxies / c.total_scanned) : 0;
+  const when = c.last_scan ? new Date(c.last_scan * 1000).toISOString().replace('T',' ').slice(0,16) + 'Z' : '—';
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><b>${c.total_scanned}</b><span>addresses scanned</span></div>
+    <div class="stat"><b>${c.covered_proxies}</b><span>covered proxies</span></div>
+    <div class="stat"><b>${pct}%</b><span>of scanned</span></div>
+    <div class="stat"><b>${c.distinct_admins}</b><span>distinct admins</span></div>
+    <div class="stat"><b>${when}</b><span>last scan (utc)</span></div>`;
+}
+
+function render(){
+  const q = document.getElementById('q').value.trim().toLowerCase();
+  const rows = data.filter(r => !q ||
+    [r.address, r.label, r.admin, r.implementation, r.kind]
+      .some(v => v && v.toLowerCase().includes(q)));
+  rows.sort((a,b) => {
+    const x = a[sortKey] ?? '', y = b[sortKey] ?? '';
+    return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y))) * sortDir;
+  });
+  document.getElementById('count').textContent = `${rows.length} row${rows.length===1?'':'s'}`;
+  document.getElementById('rows').innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.label ?? '<span class="mono">—</span>'}</td>
+      <td><a href="${bs(r.address)}" target="_blank" rel="noopener">${short(r.address)}</a></td>
+      <td><span class="tag ${r.kind}">${r.kind}</span></td>
+      <td class="mono">${r.implementation ? `<a href="${bs(r.implementation)}" target="_blank" rel="noopener">${short(r.implementation)}</a>` : '—'}</td>
+      <td class="mono">${r.admin ? `<a href="${bs(r.admin)}" target="_blank" rel="noopener">${short(r.admin)}</a>` : '—'}</td>
+      <td class="mono">${r.code_size.toLocaleString()}</td>
+    </tr>`).join('');
+}
+
+document.querySelectorAll('th').forEach(th => th.addEventListener('click', () => {
+  const k = th.dataset.k;
+  sortDir = (k === sortKey) ? -sortDir : (k === 'code_size' ? -1 : 1);
+  sortKey = k; render();
+}));
+document.getElementById('q').addEventListener('input', render);
+document.getElementById('all').addEventListener('change', load);
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+//! `hermes` — one binary, two subcommands.
+//!
+//! One binary rather than two: I want a single deployable artifact, and a scheduled job can
+//! run `hermes scan` as easily as it could run a separate entrypoint. Two binaries would buy
+//! nothing and cost a second build target.
+
+use alloy::primitives::Address;
+use anyhow::Context;
+use clap::{Parser, Subcommand};
+use hermes_core::{ProxyRecord, Store, store::checksum};
+use hermes_scan::{SEED, Scanner};
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Parser)]
+#[command(name = "hermes", version, about = "Base authority scanner")]
+struct Cli {
+    /// SQLite database URL.
+    #[arg(
+        long,
+        env = "HERMES_DB",
+        default_value = "sqlite://hermes.db",
+        global = true
+    )]
+    database_url: String,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Probe the seed list and write classifications to the database.
+    Scan {
+        #[arg(
+            long,
+            env = "HERMES_RPC_URL",
+            default_value = "https://mainnet.base.org"
+        )]
+        rpc_url: String,
+        /// Concurrent in-flight readers. 3 is what the public Base endpoint tolerates.
+        #[arg(long, env = "HERMES_CONCURRENCY", default_value_t = 3)]
+        concurrency: usize,
+        /// Scan only the first N seed entries.
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Serve the JSON API and the static page.
+    Serve {
+        #[arg(long, env = "PORT", default_value_t = 8080)]
+        port: u16,
+        #[arg(long, env = "HERMES_STATIC_DIR", default_value = "static")]
+        static_dir: PathBuf,
+    },
+}
+
+fn now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "hermes=info,hermes_scan=info,hermes_api=info".into()),
+        )
+        .init();
+
+    let cli = Cli::parse();
+    let store = Store::open(&cli.database_url)
+        .await
+        .with_context(|| format!("opening database at {}", cli.database_url))?;
+
+    match cli.command {
+        Command::Scan {
+            rpc_url,
+            concurrency,
+            limit,
+        } => {
+            let entries = match limit {
+                Some(n) => &SEED[..n.min(SEED.len())],
+                None => SEED,
+            };
+            let addrs: Vec<Address> = entries
+                .iter()
+                .map(|e| e.address.parse::<Address>())
+                .collect::<Result<_, _>>()
+                .context("seed list contains a malformed address")?;
+
+            tracing::info!(count = addrs.len(), rpc = %rpc_url, concurrency, "starting scan");
+            let scanner = Scanner::connect(&rpc_url, concurrency).await?;
+            let results = scanner.scan(addrs).await;
+
+            let scanned_at = now();
+            let mut records = Vec::new();
+            let (mut ok, mut failed, mut rereads) = (0usize, 0usize, 0usize);
+
+            for (addr, outcome) in &results {
+                match outcome {
+                    Ok(o) => {
+                        ok += 1;
+                        if o.reread {
+                            rereads += 1;
+                        }
+                        let c = o.classified;
+                        let label = SEED
+                            .iter()
+                            .find(|e| e.address.eq_ignore_ascii_case(&checksum(*addr)))
+                            .and_then(|e| e.label)
+                            .map(str::to_string);
+                        records.push(ProxyRecord {
+                            address: checksum(*addr),
+                            label,
+                            kind: c.kind.as_str().to_string(),
+                            implementation: c.implementation.map(checksum),
+                            admin: c.admin.map(checksum),
+                            beacon: c.beacon.map(checksum),
+                            code_size: o.code_size as i64,
+                            scanned_at,
+                        });
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        tracing::warn!(%addr, error = %e, "probe failed; address skipped");
+                    }
+                }
+            }
+
+            let written = store.upsert_many(&records).await?;
+            let cov = store.coverage().await?;
+            tracing::info!(ok, failed, rereads, written, "scan complete");
+            println!(
+                "scanned {ok} ok / {failed} failed ({rereads} needed a confirming re-read)\n\
+                 stored {written} rows\n\
+                 covered proxies: {}/{}",
+                cov.covered_proxies, cov.total_scanned
+            );
+            for (kind, n) in &cov.by_kind {
+                println!("  {kind:<16} {n}");
+            }
+            // Fail loudly if a scan produced nothing — a silently empty scan that still
+            // serves a page is the failure mode that makes a public dashboard lie.
+            if cov.covered_proxies == 0 {
+                anyhow::bail!("scan stored no covered proxies; refusing to report success");
+            }
+        }
+
+        Command::Serve { port, static_dir } => {
+            hermes_api::serve(store, static_dir, port).await?;
+        }
+    }
+    Ok(())
+}

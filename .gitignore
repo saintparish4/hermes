@@ -12,6 +12,9 @@
 .env
 .env.*
 
+# Agent
+.claude/
+
 # Base
 base/
 CLAUDE.md

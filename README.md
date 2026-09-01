@@ -4,7 +4,7 @@
 
 **Live:** [hermes-production-29bf.up.railway.app](https://hermes-production-29bf.up.railway.app) · [/authorities](https://hermes-production-29bf.up.railway.app/authorities) · [/coverage](https://hermes-production-29bf.up.railway.app/coverage)
 
-Two keys currently account for 27 of the 62 indexed contracts. A contract-indexed tool shows 62 rows of equal weight; this is the difference.
+One EOA can upgrade 20 of the 62 contracts currently indexed — a `ProxyAdmin` whose `owner()` has no code behind it. A contract-indexed tool shows 62 rows of equal weight; this is the difference.
 
 ## Requirements:
 

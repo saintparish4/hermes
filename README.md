@@ -2,6 +2,10 @@
 
 - A Base-native scanner that ranks every privileged key on the chain by what it controls: if an authority is compromised tomorrow, how much money moves, and how long do you have to react? Hermes ignores contract code and models the capability surface instead — who can upgrade what, how many keys that takes, whether a timelock stands in the way, and what the resulting exposure is in dollars. The unit of analysis is the authority, not the contract.
 
+**Live:** [hermes-production-29bf.up.railway.app](https://hermes-production-29bf.up.railway.app) · [/authorities](https://hermes-production-29bf.up.railway.app/authorities) · [/coverage](https://hermes-production-29bf.up.railway.app/coverage)
+
+Two keys currently account for 27 of the 62 indexed contracts. A contract-indexed tool shows 62 rows of equal weight; this is the difference.
+
 ## Requirements:
 
 - Rust (stable toolchain via `rustup`)

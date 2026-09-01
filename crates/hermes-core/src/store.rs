@@ -80,14 +80,22 @@ CREATE TABLE IF NOT EXISTS proxy (
 -- indexed from the start.
 CREATE INDEX IF NOT EXISTS idx_proxy_admin ON proxy(admin_addr);
 CREATE INDEX IF NOT EXISTS idx_proxy_kind  ON proxy(kind);
+"#;
+
+/// Indexes over columns that `migrate` may still be adding.
+///
+/// Deliberately not part of `SCHEMA`. On a database that already exists the
+/// `CREATE TABLE IF NOT EXISTS` above does nothing, so indexing a newly added column before
+/// its `ALTER TABLE` has run fails with `no such column` and takes the whole boot down with
+/// it. Ordering here is load-bearing, not cosmetic.
+const LATE_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_proxy_terminal ON proxy(terminal_authority);
 "#;
 
-/// Columns added after the first deployment. SQLite has no `ADD COLUMN IF NOT EXISTS`, and
-/// there is a populated database on a mounted volume, so the existing rows have to survive
-/// this rather than be recreated.
-/// Column name paired with the exact statement that adds it. Both are static so no SQL is
-/// ever assembled at runtime.
+/// Columns added after the first deployment, each paired with the exact statement that adds
+/// it. SQLite has no `ADD COLUMN IF NOT EXISTS`, and there is a populated database on a
+/// mounted volume, so existing rows have to survive this rather than be recreated. Both
+/// halves are static so no SQL is ever assembled at runtime.
 const ADDED_COLUMNS: &[(&str, &str)] = &[
     (
         "terminal_authority",
@@ -132,6 +140,7 @@ impl Store {
             .await?;
         sqlx::raw_sql(SCHEMA).execute(&pool).await?;
         migrate(&pool).await?;
+        sqlx::raw_sql(LATE_INDEXES).execute(&pool).await?;
         Ok(Self { pool })
     }
 
@@ -572,13 +581,27 @@ mod tests {
         );
     }
 
-    /// There is a populated database on a mounted volume, so opening a store built by the
-    /// previous schema has to add the columns without touching the rows.
+    /// The real upgrade path, exercised the way the deployment does it: a database file
+    /// written by the previous schema, then opened with `Store::open`.
+    ///
+    /// The earlier version of this test called `migrate` directly and passed while the
+    /// deployment crash-looped. `Store::open` runs the schema *before* the migration, so an
+    /// index over a not-yet-added column fails with `no such column` and never reaches the
+    /// `ALTER TABLE` that would have fixed it. Going through the real entry point is the
+    /// whole point of the test.
     #[tokio::test]
     async fn opening_a_pre_resolution_database_migrates_it_without_losing_rows() {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        let path = std::env::temp_dir().join(format!("hermes-migrate-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let url = format!("sqlite://{}", path.display());
+
+        let old = SqlitePoolOptions::new()
             .max_connections(1)
-            .connect("sqlite::memory:")
+            .connect_with(
+                SqliteConnectOptions::from_str(&url)
+                    .unwrap()
+                    .create_if_missing(true),
+            )
             .await
             .unwrap();
         sqlx::raw_sql(
@@ -586,23 +609,34 @@ mod tests {
                 address TEXT PRIMARY KEY NOT NULL, label TEXT, kind TEXT NOT NULL,
                 impl_addr TEXT, admin_addr TEXT, beacon_addr TEXT,
                 code_size INTEGER NOT NULL DEFAULT 0, scanned_at INTEGER NOT NULL);
-             INSERT INTO proxy (address,kind,code_size,scanned_at)
-             VALUES ('0xOld','transparent',100,1700000000);",
+             INSERT INTO proxy (address,label,kind,code_size,scanned_at)
+             VALUES ('0xOld','Aerodrome','transparent',100,1700000000);",
         )
-        .execute(&pool)
+        .execute(&old)
         .await
         .unwrap();
+        old.close().await;
 
-        migrate(&pool).await.unwrap();
-        let store = Store { pool };
+        let store = Store::open(&url)
+            .await
+            .expect("opening an old database must migrate it");
         let all = store.list_proxies(false).await.unwrap();
-        assert_eq!(all.len(), 1, "the existing row must survive the migration");
-        assert_eq!(all[0].address, "0xOld");
+        assert_eq!(all.len(), 1, "the existing row must survive");
+        assert_eq!(all[0].label.as_deref(), Some("Aerodrome"));
         assert_eq!(all[0].terminal_authority, None);
-        assert!(
-            migrate(store.pool()).await.is_ok(),
-            "migration must be safe to run again on every boot"
-        );
+
+        // Resolution has to work against the migrated table, not just be present in it.
+        let mut resolved = all[0].clone();
+        resolved.terminal_authority = Some("0xSafe".into());
+        resolved.compromise_depth = Some(2);
+        store.upsert_many(&[resolved]).await.unwrap();
+        assert_eq!(store.authority_rollup().await.unwrap().len(), 1);
+
+        drop(store);
+        Store::open(&url)
+            .await
+            .expect("every subsequent boot must open it too");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[tokio::test]

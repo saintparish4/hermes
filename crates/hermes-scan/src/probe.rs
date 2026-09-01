@@ -93,6 +93,16 @@ impl Scanner {
         })
     }
 
+    /// The live connection, so authority resolution reuses it rather than opening a second
+    /// one against the same rate limit.
+    pub fn provider(&self) -> DynProvider {
+        self.provider.clone()
+    }
+
+    pub fn concurrency(&self) -> usize {
+        self.concurrency
+    }
+
     async fn storage(&self, addr: Address, slot: B256) -> anyhow::Result<B256> {
         let v = self.provider.get_storage_at(addr, slot_key(slot)).await?;
         Ok(B256::from(v))

@@ -49,16 +49,15 @@ struct ProxyList {
 }
 
 #[derive(Serialize)]
-struct AuthorityRow {
-    admin: String,
-    proxy_count: i64,
+struct AuthorityList {
+    count: usize,
+    authorities: Vec<hermes_core::store::AuthorityRow>,
 }
 
 #[derive(Serialize)]
-struct AuthorityList {
-    note: &'static str,
-    count: usize,
-    authorities: Vec<AuthorityRow>,
+struct AuthorityDetail {
+    authority: hermes_core::store::AuthorityRow,
+    proxies: Vec<hermes_core::ProxyRecord>,
 }
 
 pub fn router(store: Store, static_dir: PathBuf) -> Router {
@@ -69,6 +68,7 @@ pub fn router(store: Store, static_dir: PathBuf) -> Router {
         // axum 0.8 uses `{param}`, not the `:param` syntax of 0.7 and earlier.
         .route("/proxies/{address}", get(get_proxy))
         .route("/authorities", get(list_authorities))
+        .route("/authorities/{address}", get(get_authority))
         .route("/coverage", get(coverage))
         .fallback_service(ServeDir::new(static_dir).fallback(ServeFile::new(index)))
         .layer(CorsLayer::permissive())
@@ -98,19 +98,36 @@ async fn get_proxy(State(store): State<Store>, Path(address): Path<String>) -> A
     }
 }
 
-/// Groups by each proxy's *immediate* admin, because authority resolution does not exist
-/// yet. Swapping the grouping key to `terminal_authority` will not change this route's
-/// contract, which is why I shipped the route before the resolver.
+/// Ranked by how many proxies each resolved root controls.
+///
+/// Proxies whose chain did not resolve are absent here on purpose. Bucketing them under a
+/// placeholder authority would invent a row; `/coverage` reports them as the gap instead.
 async fn list_authorities(State(store): State<Store>) -> ApiResult<Json<AuthorityList>> {
-    let rows = store.admin_rollup().await?;
+    let authorities = store.authority_rollup().await?;
     Ok(Json(AuthorityList {
-        note: "grouped by immediate admin, not resolved terminal authority",
-        count: rows.len(),
-        authorities: rows
-            .into_iter()
-            .map(|(admin, proxy_count)| AuthorityRow { admin, proxy_count })
-            .collect(),
+        count: authorities.len(),
+        authorities,
     }))
+}
+
+async fn get_authority(
+    State(store): State<Store>,
+    Path(address): Path<String>,
+) -> ApiResult<Response> {
+    let proxies = store.proxies_for_authority(&address).await?;
+    let Some(authority) = store
+        .authority_rollup()
+        .await?
+        .into_iter()
+        .find(|a| a.address.eq_ignore_ascii_case(&address))
+    else {
+        return Ok((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "unknown authority", "address": address })),
+        )
+            .into_response());
+    };
+    Ok(Json(AuthorityDetail { authority, proxies }).into_response())
 }
 
 /// Bind and serve until Ctrl-C. Lives here so the CLI never needs to depend on axum.
@@ -151,19 +168,45 @@ mod tests {
                     kind: "transparent".into(),
                     implementation: Some("0x6d9d".into()),
                     admin: Some("0x31e9".into()),
-                    beacon: None,
                     code_size: 1971,
                     scanned_at: 1_700_000_000,
+                    terminal_authority: Some("0xSafe".into()),
+                    authority_kind: Some("safe".into()),
+                    compromise_depth: Some(2),
+                    timelock_seconds: Some(0),
+                    resolution_confidence: Some("high".into()),
+                    ..Default::default()
+                },
+                // A proxy under a different immediate admin but the same root: these two must
+                // come back as one authority, not two.
+                hermes_core::ProxyRecord {
+                    address: "0xBeef".into(),
+                    kind: "uups".into(),
+                    admin: Some("0xOtherProxyAdmin".into()),
+                    code_size: 900,
+                    scanned_at: 1_700_000_000,
+                    terminal_authority: Some("0xSafe".into()),
+                    authority_kind: Some("safe".into()),
+                    compromise_depth: Some(2),
+                    timelock_seconds: Some(0),
+                    resolution_confidence: Some("high".into()),
+                    ..Default::default()
+                },
+                // Unresolved on purpose: it must stay out of the ranking and stay counted.
+                hermes_core::ProxyRecord {
+                    address: "0xMystery".into(),
+                    kind: "transparent".into(),
+                    admin: Some("0xUnknownThing".into()),
+                    code_size: 500,
+                    scanned_at: 1_700_000_000,
+                    ..Default::default()
                 },
                 hermes_core::ProxyRecord {
                     address: "0xDead".into(),
-                    label: None,
                     kind: "eoa".into(),
-                    implementation: None,
-                    admin: None,
-                    beacon: None,
                     code_size: 0,
                     scanned_at: 1_700_000_000,
+                    ..Default::default()
                 },
             ])
             .await
@@ -190,7 +233,7 @@ mod tests {
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         let v = body_json(r).await;
-        assert_eq!(v["count"], 1, "the EOA row must not appear in /proxies");
+        assert_eq!(v["count"], 3, "the EOA row must not appear in /proxies");
     }
 
     #[tokio::test]
@@ -206,7 +249,7 @@ mod tests {
             .await
             .unwrap();
         let v = body_json(r).await;
-        assert_eq!(v["count"], 2);
+        assert_eq!(v["count"], 4);
     }
 
     #[tokio::test]
@@ -256,8 +299,103 @@ mod tests {
             .await
             .unwrap();
         let v = body_json(r).await;
-        assert_eq!(v["total_scanned"], 2);
-        assert_eq!(v["covered_proxies"], 1);
+        assert_eq!(v["total_scanned"], 4);
+        assert_eq!(v["covered_proxies"], 3);
+        assert_eq!(
+            v["resolved_proxies"], 2,
+            "the unresolved proxy must be visible as a gap, not hidden"
+        );
+        assert_eq!(v["distinct_authorities"], 1);
+    }
+
+    /// The grouping that the product rests on, asserted through the JSON rather than only in
+    /// the store: two proxies, two different admins, one row.
+    #[tokio::test]
+    async fn authorities_group_on_the_resolved_root_not_the_immediate_admin() {
+        let app = app_with_rows().await;
+        let r = app
+            .oneshot(
+                Request::builder()
+                    .uri("/authorities")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let v = body_json(r).await;
+        assert_eq!(v["count"], 1);
+        assert_eq!(v["authorities"][0]["address"], "0xSafe");
+        assert_eq!(v["authorities"][0]["proxy_count"], 2);
+        assert_eq!(v["authorities"][0]["compromise_depth"], 2);
+    }
+
+    /// Null is not zero, and it has to survive all the way into the response body. A depth
+    /// serialized as 0 would read as "costs nothing to compromise".
+    #[tokio::test]
+    async fn an_unknown_depth_serializes_as_null_not_zero() {
+        let store = Store::open("sqlite::memory:").await.unwrap();
+        store
+            .upsert_many(&[hermes_core::ProxyRecord {
+                address: "0xA".into(),
+                kind: "transparent".into(),
+                admin: Some("0xCycle".into()),
+                code_size: 10,
+                scanned_at: 1,
+                terminal_authority: Some("0xCycle".into()),
+                authority_kind: Some("ownable".into()),
+                compromise_depth: None,
+                timelock_seconds: Some(0),
+                resolution_confidence: Some("medium".into()),
+                ..Default::default()
+            }])
+            .await
+            .unwrap();
+        let app = router(store, PathBuf::from("static"));
+        let r = app
+            .oneshot(
+                Request::builder()
+                    .uri("/authorities")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let v = body_json(r).await;
+        assert!(v["authorities"][0]["compromise_depth"].is_null());
+        assert_eq!(v["authorities"][0]["timelock_seconds"], 0);
+    }
+
+    #[tokio::test]
+    async fn one_authority_lists_every_proxy_it_controls() {
+        let app = app_with_rows().await;
+        let r = app
+            .oneshot(
+                Request::builder()
+                    .uri("/authorities/0xSafe")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = body_json(r).await;
+        assert_eq!(v["authority"]["proxy_count"], 2);
+        assert_eq!(v["proxies"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn an_unknown_authority_is_404_not_500() {
+        let app = app_with_rows().await;
+        let r = app
+            .oneshot(
+                Request::builder()
+                    .uri("/authorities/0xNobody")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

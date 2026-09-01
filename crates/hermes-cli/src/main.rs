@@ -7,8 +7,9 @@
 use alloy::primitives::Address;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use hermes_core::{ProxyRecord, Store, store::checksum};
-use hermes_scan::{SEED, Scanner};
+use hermes_core::{AuthorityKind, Confidence, ProxyRecord, Store, resolve, store::checksum};
+use hermes_scan::{AuthorityScanner, SEED, Scanner};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -52,6 +53,64 @@ enum Command {
         #[arg(long, env = "HERMES_STATIC_DIR", default_value = "static")]
         static_dir: PathBuf,
     },
+}
+
+fn authority_kind_str(kind: AuthorityKind) -> &'static str {
+    match kind {
+        AuthorityKind::Eoa => "eoa",
+        AuthorityKind::Safe => "safe",
+        AuthorityKind::Ownable => "ownable",
+        AuthorityKind::Timelock => "timelock",
+        AuthorityKind::Unknown => "unknown",
+    }
+}
+
+fn confidence_str(confidence: Confidence) -> &'static str {
+    match confidence {
+        Confidence::High => "high",
+        Confidence::Medium => "medium",
+        Confidence::Unknown => "unknown",
+    }
+}
+
+/// Walk every distinct admin to its root and write the answer back onto each proxy.
+///
+/// Done as a second pass rather than inline so the probe collection can be batched across
+/// every admin at once. Admins are shared heavily — one ProxyAdmin governs twenty contracts
+/// on Base — so resolving per proxy would re-walk the same subgraph twenty times.
+async fn resolve_authorities(scanner: &AuthorityScanner, records: &mut [ProxyRecord]) -> usize {
+    let admins: Vec<_> = records
+        .iter()
+        .filter_map(|r| r.admin.as_ref()?.parse().ok())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    if admins.is_empty() {
+        return 0;
+    }
+
+    tracing::info!(count = admins.len(), "resolving authorities");
+    let probes = scanner.collect(admins).await;
+    let mut resolved = 0;
+
+    for record in records.iter_mut() {
+        let Some(admin) = record.admin.as_ref().and_then(|a| a.parse().ok()) else {
+            continue;
+        };
+        let r = resolve(admin, &probes);
+        // An unresolved chain leaves the columns untouched, so the store keeps whatever it
+        // already knew instead of being told the authority disappeared.
+        if r.confidence == Confidence::Unknown {
+            continue;
+        }
+        record.terminal_authority = Some(checksum(r.terminal_authority));
+        record.authority_kind = Some(authority_kind_str(r.kind).into());
+        record.compromise_depth = r.compromise_depth.map(i64::from);
+        record.timelock_seconds = Some(r.timelock_seconds as i64);
+        record.resolution_confidence = Some(confidence_str(r.confidence).into());
+        resolved += 1;
+    }
+    resolved
 }
 
 fn now() -> i64 {
@@ -132,6 +191,8 @@ async fn main() -> anyhow::Result<()> {
                             beacon: c.beacon.map(checksum),
                             code_size: o.code_size as i64,
                             scanned_at,
+                            // Filled in by the resolution pass below.
+                            ..Default::default()
                         });
                     }
                     Err(e) => {
@@ -141,15 +202,31 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
 
+            // Resolution runs at concurrency 1 regardless of what the slot scan uses.
+            // `eth_call` is far more expensive to the public endpoint than
+            // `eth_getStorageAt`, and once its rate limiter trips it stays tripped for
+            // seconds. The admin set is small enough that serialising it costs little.
+            let authority_scanner = AuthorityScanner::new(scanner.provider(), 1);
+            let resolved = resolve_authorities(&authority_scanner, &mut records).await;
+
             let written = store.upsert_many(&records).await?;
             let cov = store.coverage().await?;
-            tracing::info!(ok, failed, rereads, unconfirmed, written, "scan complete");
+            tracing::info!(
+                ok,
+                failed,
+                rereads,
+                unconfirmed,
+                resolved,
+                written,
+                "scan complete"
+            );
             println!(
                 "scanned {ok} ok / {failed} failed / {unconfirmed} unconfirmed \
                  ({rereads} needed a confirming re-read)\n\
                  stored {written} rows\n\
-                 covered proxies: {}/{}",
-                cov.covered_proxies, cov.total_scanned
+                 covered proxies: {}/{}\n\
+                 resolved to an authority: {resolved} across {} distinct roots",
+                cov.covered_proxies, cov.total_scanned, cov.distinct_authorities
             );
             for (kind, n) in &cov.by_kind {
                 println!("  {kind:<16} {n}");

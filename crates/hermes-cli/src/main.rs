@@ -97,16 +97,27 @@ async fn main() -> anyhow::Result<()> {
 
             let scanned_at = now();
             let mut records = Vec::new();
-            let (mut ok, mut failed, mut rereads) = (0usize, 0usize, 0usize);
+            let (mut ok, mut failed, mut rereads, mut unconfirmed) = (0usize, 0usize, 0, 0usize);
 
             for (addr, outcome) in &results {
                 match outcome {
                     Ok(o) => {
-                        ok += 1;
-                        if o.reread {
+                        if o.needed_reread() {
                             rereads += 1;
                         }
-                        let c = o.classified;
+                        // An unconfirmed empty read would classify as `NotUpgradeable` or
+                        // `Eoa`, overwrite a stored proxy, and report a live upgrade
+                        // authority as safe. Leaving the previous row untouched and stale is
+                        // the better of the two wrong answers available here.
+                        let Some(c) = o.verdict() else {
+                            unconfirmed += 1;
+                            tracing::warn!(
+                                %addr,
+                                "empty read never confirmed; keeping any previous verdict"
+                            );
+                            continue;
+                        };
+                        ok += 1;
                         let label = SEED
                             .iter()
                             .find(|e| e.address.eq_ignore_ascii_case(&checksum(*addr)))
@@ -132,9 +143,10 @@ async fn main() -> anyhow::Result<()> {
 
             let written = store.upsert_many(&records).await?;
             let cov = store.coverage().await?;
-            tracing::info!(ok, failed, rereads, written, "scan complete");
+            tracing::info!(ok, failed, rereads, unconfirmed, written, "scan complete");
             println!(
-                "scanned {ok} ok / {failed} failed ({rereads} needed a confirming re-read)\n\
+                "scanned {ok} ok / {failed} failed / {unconfirmed} unconfirmed \
+                 ({rereads} needed a confirming re-read)\n\
                  stored {written} rows\n\
                  covered proxies: {}/{}",
                 cov.covered_proxies, cov.total_scanned

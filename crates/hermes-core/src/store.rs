@@ -75,7 +75,18 @@ impl Store {
         &self.pool
     }
 
-    /// Upsert a batch in one transaction. Re-scans overwrite prior rows for the same address.
+    /// Upsert a batch in one transaction. Re-scans overwrite prior rows for the same address,
+    /// with one exception.
+    ///
+    /// A row that once had code can never legitimately come back with none: deployed code is
+    /// immutable. So an incoming `code_size` of zero against a stored non-zero one is the
+    /// node lying, not the chain changing, and the whole update is skipped rather than
+    /// allowed to rewrite a live proxy as an EOA. `scanned_at` does not move either, which is
+    /// what makes the surviving row visibly stale instead of silently wrong.
+    ///
+    /// This deliberately does not guard kind-to-kind transitions. A proxy really can go from
+    /// transparent to UUPS when an admin renounces, and refusing that would trade a rare
+    /// wrong answer for a common one.
     pub async fn upsert_many(&self, records: &[ProxyRecord]) -> anyhow::Result<u64> {
         let mut tx = self.pool.begin().await?;
         let mut n = 0;
@@ -90,7 +101,8 @@ impl Store {
                      admin_addr=excluded.admin_addr,
                      beacon_addr=excluded.beacon_addr,
                      code_size=excluded.code_size,
-                     scanned_at=excluded.scanned_at"#,
+                     scanned_at=excluded.scanned_at
+                   WHERE NOT (proxy.code_size > 0 AND excluded.code_size = 0)"#,
             )
             .bind(&r.address).bind(&r.label).bind(&r.kind)
             .bind(&r.implementation).bind(&r.admin).bind(&r.beacon)
@@ -273,6 +285,44 @@ mod tests {
             "one admin must produce exactly one authority row"
         );
         assert_eq!(rollup[0], ("0xSharedAdmin".to_string(), 7));
+    }
+
+    /// The failure this exists to stop: a node briefly answers `0x` for a contract that has
+    /// code, the scan believes it, and a live upgrade authority is republished as an EOA.
+    #[tokio::test]
+    async fn a_contract_losing_its_code_never_overwrites_a_stored_proxy() {
+        let s = mem().await;
+        s.upsert_many(&[rec("0xA", "transparent", Some("0xAdmin"))])
+            .await
+            .unwrap();
+
+        let mut blank = rec("0xA", "eoa", None);
+        blank.code_size = 0;
+        blank.implementation = None;
+        blank.scanned_at = 1_800_000_000;
+        s.upsert_many(&[blank]).await.unwrap();
+
+        let all = s.list_proxies(false).await.unwrap();
+        assert_eq!(all[0].kind, "transparent", "deployed code cannot disappear");
+        assert_eq!(all[0].admin.as_deref(), Some("0xAdmin"));
+        assert_eq!(
+            all[0].scanned_at, 1_700_000_000,
+            "the surviving row must read as stale, not as freshly confirmed"
+        );
+    }
+
+    /// The guard must not buy safety by freezing the store: an admin renouncing is a real
+    /// transition and has to land.
+    #[tokio::test]
+    async fn a_renounced_admin_still_updates_the_stored_kind() {
+        let s = mem().await;
+        s.upsert_many(&[rec("0xA", "transparent", Some("0xAdmin"))])
+            .await
+            .unwrap();
+        s.upsert_many(&[rec("0xA", "uups", None)]).await.unwrap();
+        let all = s.list_proxies(false).await.unwrap();
+        assert_eq!(all[0].kind, "uups");
+        assert_eq!(all[0].admin, None);
     }
 
     #[tokio::test]

@@ -22,14 +22,58 @@ use hermes_core::{
 };
 use std::time::Duration;
 
+/// How much the reads behind a verdict can be trusted.
+///
+/// The distinction that matters is between an empty read a second read agreed with and an
+/// empty read nobody ever confirmed. Both look identical in the data — all-zero slots, no
+/// code — and they have opposite consequences. The first is a contract nobody can upgrade.
+/// The second is a live upgrade authority I failed to see.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadConfidence {
+    /// Something non-empty came back, so no confirmation was needed. A node can fail to
+    /// return an implementation address but it cannot invent one, which is what makes a
+    /// single non-empty sighting enough.
+    Observed,
+    /// The first read looked empty and a second read turned up slots it had missed. This is
+    /// the case the confirming re-read exists for, so counting it separately is how I tell
+    /// how often the endpoint is lying in the recoverable direction.
+    Recovered,
+    /// The first read looked empty and a second read agreed.
+    ConfirmedEmpty,
+    /// The first read looked empty and the confirming re-read never completed.
+    Unconfirmed,
+}
+
 #[derive(Debug, Clone)]
 pub struct ProbeOutcome {
     pub address: Address,
     pub reads: SlotReads,
-    pub classified: Classified,
     pub code_size: usize,
-    /// True when a negative first read had to be confirmed by a second read.
-    pub reread: bool,
+    pub confidence: ReadConfidence,
+    classified: Classified,
+}
+
+impl ProbeOutcome {
+    /// The classification, and `None` when the reads behind it were never confirmed.
+    ///
+    /// Returning an `Option` rather than exposing the field is the whole point: it makes
+    /// publishing an unconfirmed verdict something a caller has to do deliberately instead
+    /// of something that happens by default. An unconfirmed empty read classifies as
+    /// `NotUpgradeable` or `Eoa` — both of which read as "safe" on a dashboard — so this is
+    /// the one place a wrong answer would be both silent and reassuring.
+    pub fn verdict(&self) -> Option<Classified> {
+        match self.confidence {
+            ReadConfidence::Unconfirmed => None,
+            ReadConfidence::Observed
+            | ReadConfidence::Recovered
+            | ReadConfidence::ConfirmedEmpty => Some(self.classified),
+        }
+    }
+
+    /// Whether a confirming re-read was attempted, regardless of whether it came back.
+    pub fn needed_reread(&self) -> bool {
+        self.confidence != ReadConfidence::Observed
+    }
 }
 
 #[derive(Clone)]
@@ -97,32 +141,33 @@ impl Scanner {
     pub async fn probe(&self, addr: Address) -> anyhow::Result<ProbeOutcome> {
         let (first, mut code_size) = self.read_with_retry(addr).await?;
 
-        let looks_empty = first.code_empty
-            || (first.implementation.is_zero()
-                && first.admin.is_zero()
-                && first.beacon.is_zero()
-                && first.proxiable.is_zero()
-                && first.zos_implementation.is_zero());
+        let looks_empty = looks_empty_reads(&first);
 
-        let (reads, reread) = if looks_empty {
+        let (reads, confidence) = if looks_empty {
             tokio::time::sleep(Duration::from_millis(150)).await;
             match self.read_with_retry(addr).await {
                 Ok((second, second_size)) => {
                     code_size = code_size.max(second_size);
-                    (merge_prefer_nonempty(first, second), true)
+                    let merged = merge_prefer_nonempty(first, second);
+                    let confidence = if looks_empty_reads(&merged) {
+                        ReadConfidence::ConfirmedEmpty
+                    } else {
+                        ReadConfidence::Recovered
+                    };
+                    (merged, confidence)
                 }
-                Err(_) => (first, true),
+                Err(_) => (first, ReadConfidence::Unconfirmed),
             }
         } else {
-            (first, false)
+            (first, ReadConfidence::Observed)
         };
 
         Ok(ProbeOutcome {
             address: addr,
             reads,
-            classified: classify(reads),
             code_size,
-            reread,
+            confidence,
+            classified: classify(reads),
         })
     }
 
@@ -139,6 +184,16 @@ impl Scanner {
             .collect()
             .await
     }
+}
+
+/// Whether a read carries nothing that could support a positive verdict.
+fn looks_empty_reads(r: &SlotReads) -> bool {
+    r.code_empty
+        || (r.implementation.is_zero()
+            && r.admin.is_zero()
+            && r.beacon.is_zero()
+            && r.proxiable.is_zero()
+            && r.zos_implementation.is_zero())
 }
 
 /// Prefer any non-zero observation across two reads of the same address.
@@ -201,6 +256,80 @@ mod tests {
         };
         let empty = SlotReads::default();
         assert_eq!(merge_prefer_nonempty(good, empty).implementation, IMPL_WORD);
+    }
+
+    fn outcome(confidence: ReadConfidence, reads: SlotReads) -> ProbeOutcome {
+        ProbeOutcome {
+            address: Address::ZERO,
+            reads,
+            code_size: 0,
+            confidence,
+            classified: classify(reads),
+        }
+    }
+
+    #[test]
+    fn an_unconfirmed_read_yields_no_verdict() {
+        let o = outcome(ReadConfidence::Unconfirmed, SlotReads::default());
+        assert_eq!(
+            o.verdict(),
+            None,
+            "an empty read nobody confirmed must not be publishable as a classification"
+        );
+    }
+
+    #[test]
+    fn a_confirmed_empty_read_does_yield_a_verdict() {
+        let o = outcome(ReadConfidence::ConfirmedEmpty, SlotReads::default());
+        assert_eq!(
+            o.verdict().map(|c| c.kind),
+            Some(hermes_core::ProxyKind::NotUpgradeable),
+            "two reads agreeing on empty is a real answer, not a failure"
+        );
+    }
+
+    #[test]
+    fn a_recovered_read_yields_the_verdict_the_second_read_found() {
+        let o = outcome(
+            ReadConfidence::Recovered,
+            SlotReads {
+                implementation: IMPL_WORD,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            o.verdict().map(|c| c.kind),
+            Some(hermes_core::ProxyKind::Uups),
+            "a slot the re-read turned up is a real observation"
+        );
+        assert!(o.needed_reread());
+    }
+
+    #[test]
+    fn an_observed_read_yields_a_verdict_without_a_reread() {
+        let o = outcome(
+            ReadConfidence::Observed,
+            SlotReads {
+                implementation: IMPL_WORD,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            o.verdict().map(|c| c.kind),
+            Some(hermes_core::ProxyKind::Uups)
+        );
+        assert!(!o.needed_reread());
+    }
+
+    #[test]
+    fn every_second_read_path_counts_as_having_needed_a_reread() {
+        for c in [
+            ReadConfidence::Recovered,
+            ReadConfidence::ConfirmedEmpty,
+            ReadConfidence::Unconfirmed,
+        ] {
+            assert!(outcome(c, SlotReads::default()).needed_reread());
+        }
     }
 
     #[test]

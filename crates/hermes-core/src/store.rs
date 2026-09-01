@@ -92,31 +92,17 @@ const LATE_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_proxy_terminal ON proxy(terminal_authority);
 "#;
 
-/// Columns added after the first deployment, each paired with the exact statement that adds
-/// it. SQLite has no `ADD COLUMN IF NOT EXISTS`, and there is a populated database on a
-/// mounted volume, so existing rows have to survive this rather than be recreated. Both
-/// halves are static so no SQL is ever assembled at runtime.
-const ADDED_COLUMNS: &[(&str, &str)] = &[
-    (
-        "terminal_authority",
-        "ALTER TABLE proxy ADD COLUMN terminal_authority TEXT",
-    ),
-    (
-        "authority_kind",
-        "ALTER TABLE proxy ADD COLUMN authority_kind TEXT",
-    ),
-    (
-        "compromise_depth",
-        "ALTER TABLE proxy ADD COLUMN compromise_depth INTEGER",
-    ),
-    (
-        "timelock_seconds",
-        "ALTER TABLE proxy ADD COLUMN timelock_seconds INTEGER",
-    ),
-    (
-        "resolution_confidence",
-        "ALTER TABLE proxy ADD COLUMN resolution_confidence TEXT",
-    ),
+/// Columns added after the first deployment, as the statements that add them.
+///
+/// SQLite has no `ADD COLUMN IF NOT EXISTS`, and there is a populated database on a mounted
+/// volume, so existing rows have to survive this rather than be recreated. Statements are
+/// static so no SQL is ever assembled at runtime.
+const ADDED_COLUMNS: &[&str] = &[
+    "ALTER TABLE proxy ADD COLUMN terminal_authority TEXT",
+    "ALTER TABLE proxy ADD COLUMN authority_kind TEXT",
+    "ALTER TABLE proxy ADD COLUMN compromise_depth INTEGER",
+    "ALTER TABLE proxy ADD COLUMN timelock_seconds INTEGER",
+    "ALTER TABLE proxy ADD COLUMN resolution_confidence TEXT",
 ];
 
 #[derive(Clone)]
@@ -332,19 +318,29 @@ fn row_to_record(r: &sqlx::sqlite::SqliteRow) -> ProxyRecord {
 }
 
 /// Add any column the running schema is missing, leaving existing rows intact.
+///
+/// Deliberately attempts every `ALTER TABLE` rather than checking `PRAGMA table_info` first.
+/// The scan and the server open this database as separate processes at the same time, so a
+/// check-then-add lets both read "column absent", both issue the `ALTER`, and the loser die
+/// on `duplicate column name`. Treating that specific error as success makes the migration
+/// idempotent by construction instead of by timing.
 async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
-    let present: Vec<String> = sqlx::query("PRAGMA table_info(proxy)")
-        .fetch_all(pool)
-        .await?
-        .iter()
-        .map(|r| r.get::<String, _>("name"))
-        .collect();
-    for (name, statement) in ADDED_COLUMNS {
-        if !present.iter().any(|c| c == name) {
-            sqlx::raw_sql(*statement).execute(pool).await?;
+    for statement in ADDED_COLUMNS {
+        match sqlx::raw_sql(*statement).execute(pool).await {
+            Ok(_) => {}
+            Err(e) if is_duplicate_column(&e) => {}
+            Err(e) => return Err(e.into()),
         }
     }
     Ok(())
+}
+
+/// Only ever swallow the one error that means "another process already did this".
+fn is_duplicate_column(error: &sqlx::Error) -> bool {
+    error
+        .to_string()
+        .to_ascii_lowercase()
+        .contains("duplicate column name")
 }
 
 /// Store addresses EIP-55 checksummed so the API and the seed file agree byte for byte.
@@ -636,6 +632,53 @@ mod tests {
         Store::open(&url)
             .await
             .expect("every subsequent boot must open it too");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The scan and the server open this database as separate processes at the same time, so
+    /// the migration has to survive being run concurrently against the same file.
+    ///
+    /// The check-then-add version passed every single-threaded test and then took the scan
+    /// down on the first boot after the columns landed: both openers read "column absent",
+    /// both issued the ALTER, and the loser died on `duplicate column name`.
+    #[tokio::test]
+    async fn concurrent_opens_do_not_collide_on_the_migration() {
+        let path = std::env::temp_dir().join(format!("hermes-race-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let url = format!("sqlite://{}", path.display());
+
+        let seed = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::from_str(&url)
+                    .unwrap()
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE proxy (
+                address TEXT PRIMARY KEY NOT NULL, label TEXT, kind TEXT NOT NULL,
+                impl_addr TEXT, admin_addr TEXT, beacon_addr TEXT,
+                code_size INTEGER NOT NULL DEFAULT 0, scanned_at INTEGER NOT NULL);
+             INSERT INTO proxy (address,kind,code_size,scanned_at)
+             VALUES ('0xOld','transparent',100,1700000000);",
+        )
+        .execute(&seed)
+        .await
+        .unwrap();
+        seed.close().await;
+
+        // Spawned, not awaited in sequence: awaiting them one at a time would never
+        // overlap and would pass against the broken version too.
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let url = url.clone();
+            handles.push(tokio::spawn(async move { Store::open(&url).await.is_ok() }));
+        }
+        for (i, h) in handles.into_iter().enumerate() {
+            assert!(h.await.unwrap(), "concurrent open {i} failed to migrate");
+        }
         let _ = std::fs::remove_file(&path);
     }
 

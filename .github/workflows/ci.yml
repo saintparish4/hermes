@@ -21,7 +21,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # rust-toolchain.toml pins the channel and components; this installs exactly that.
       - name: Install Rust toolchain

@@ -8,7 +8,7 @@
 use crate::classify::ProxyKind;
 use alloy::primitives::Address;
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Row, SqlitePool};
 use std::str::FromStr;
 
@@ -62,6 +62,10 @@ impl Store {
     pub async fn open(url: &str) -> anyhow::Result<Self> {
         let opts = SqliteConnectOptions::from_str(url)?
             .create_if_missing(true)
+            // A scan and the server run against this file at the same time in the deployed
+            // container. WAL is what lets the server keep answering reads while a scan
+            // commits, instead of both sides taking turns behind a lock.
+            .journal_mode(SqliteJournalMode::Wal)
             .busy_timeout(std::time::Duration::from_secs(10));
         let pool = SqlitePoolOptions::new()
             .max_connections(5)

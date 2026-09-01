@@ -1,0 +1,8 @@
+target/
+home/
+base/
+docs/
+.git/
+.github/
+hermes.db*
+**/*.md

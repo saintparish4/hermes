@@ -203,7 +203,33 @@ Rust compiler                 next build (output: 'export')
       native executable + SQLite file
 ```
 
-The scanner runs as a scheduled job (`hermes scan`) writing to the same SQLite file the API reads from.
+The container serves in the foreground and re-scans behind it on a loop, writing to the same SQLite file the API reads from. That ordering is deliberate: a scan that runs to completion before the port opens leaves the health check unanswered until it finishes, which is survivable at 62 seeded addresses and stops being survivable as the seed grows.
+
+### Railway
+
+```bash
+railway init
+railway volume add --mount-path /data     # required — see below
+railway up
+```
+
+**The volume is not optional.** Without it the SQLite file lives in the container filesystem, and every redeploy silently starts from an empty scan — the API answers, the page renders, and there is nothing in it. `HERMES_DB` already points at `sqlite:///data/hermes.db`, so mounting at `/data` is all it takes.
+
+Two things that will bite otherwise:
+
+- **Volume permissions.** The image runs as UID 10001 rather than root, and Railway documents that non-root images hit permission errors on an attached volume. If the first deploy cannot write to `/data`, set `RAILWAY_RUN_UID=0` as a service variable.
+- **The refresh loop lives in the container.** Railway allows one volume per service, so a separate scheduled service could not reach this database at all. `HERMES_SCAN_INTERVAL` controls the period and defaults to 86400 seconds.
+
+`healthcheckPath` points at `/healthz`, which deliberately does not touch SQLite. A health check that queried the database would get the container killed during a scan, on exactly the runs that matter most.
+
+### Anywhere else
+
+The image has no Railway-specific anything in it — mount a volume at `/data`, set `PORT`, and it runs.
+
+```bash
+docker build -t hermes .
+docker run -p 8080:8080 -v hermes-data:/data hermes
+```
 
 ## Contributing:
 

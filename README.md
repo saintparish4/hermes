@@ -203,7 +203,12 @@ Rust compiler                 next build (output: 'export')
       native executable + SQLite file
 ```
 
-The container serves in the foreground and re-scans behind it on a loop, writing to the same SQLite file the API reads from. That ordering is deliberate: a scan that runs to completion before the port opens leaves the health check unanswered until it finishes, which is survivable at 62 seeded addresses and stops being survivable as the seed grows.
+The container refreshes on a loop behind the server, writing to the same SQLite file the API reads from. Two boot paths, depending on whether there is anything to serve:
+
+- **Database empty** — scan first, then open the port. Serving an empty table is worse than making the first visitor wait, and this is the state a first deploy starts in, or every deploy if the volume is ever missing.
+- **Database populated** — open the port immediately and refresh in the background.
+
+Refreshes never run in front of the port. A scan that has to finish before serving starts leaves the health check unanswered for its whole duration, which is survivable at 62 seeded addresses and stops being survivable as the seed grows.
 
 ### Railway
 

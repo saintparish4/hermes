@@ -1,0 +1,8 @@
+# The build context only needs the Rust workspace and the static page. Without this, an
+# upload can carry target/ and home/node_modules — about 4.3 GB of the 4.4 GB checkout.
+target/
+home/
+base/
+docs/
+.git/
+hermes.db*

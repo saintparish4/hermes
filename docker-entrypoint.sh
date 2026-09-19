@@ -14,8 +14,13 @@ DB_FILE="${DB_FILE#sqlite://}"
 # would outlast the 60-second health check, failing the deploy. Classifying the curated seed
 # takes about twenty seconds; the port opens on real rows, and the full discovery and resolution
 # pass starts straight away in the background.
+#
+# Twenty seconds is what the public endpoint gives when it is well. Rate-limited, the same pass
+# took over two minutes of honest retries, so it is capped at 40 seconds and written in batches
+# of ten: whatever it finished is served, and a slow endpoint costs rows rather than the deploy.
 if [ ! -s "$DB_FILE" ]; then
-  hermes scan --classify-only || echo "hermes: initial classification failed; serving an empty store" >&2
+  timeout 40 hermes scan --classify-only --batch 10 \
+    || echo "hermes: initial classification failed or ran out of time; serving what it stored" >&2
 else
   # Migrate once, alone, before the refresh and the server open the file together. Store::open
   # is safe to race, but a deploy that adds a column is exactly when two processes would

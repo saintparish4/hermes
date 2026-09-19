@@ -14,6 +14,12 @@ row is what the next deploy will serve; it is not live until it is deployed.
 |---|---|---|---|---|---|---|---|---|
 | 2026-09-16 | Baseline (`0202bec`) | live | 62 | 58 | 28 | 9 | 6 (25), **wrong** | "EOA", 20 proxies, 1 key, **wrong** |
 | 2026-09-19 | Step 1: L1→L2 aliasing | local | 62 | 58 | 28 | 9 | 5 (5) | Safe on Ethereum, 20 proxies, 11 keys |
+| 2026-09-19 | Step 3: UUPS, beacon, reasons | local | 62 | 58 | **43** | 16 | 9 (11) | Safe on Ethereum, 20 proxies, 11 keys |
+
+Step 3 breakdown: resolved by path, admin slot 28, UUPS `owner()` 9 (all Medium), beacon 6.
+Unresolved by reason: `unrecognized_interface` 14 (7 under `0x31e9…0c17`, 5 UUPS without an
+`owner()`, 2 beacons whose controller answers nothing), `uups_unconfirmed` 1. Second-largest
+root: a 2-of-3 Safe on Base behind six beacon proxies.
 
 ## Engineering
 
@@ -22,6 +28,7 @@ row is what the next deploy will serve; it is not live until it is deployed.
 | 2026-09-16 | Baseline | 84 | 18/60 isolated runs of `concurrent_opens…` (measured 2026-09-19) | not recorded | |
 | 2026-09-19 | Step 1 | 102 | unchanged (step 2 fixes it) | 2m54s | Resolution paced at 1 call/s to Base; unpaced runs resolved 25 or 28 depending on the rate limiter |
 | 2026-09-19 | Step 2: reliable gate, verified table | 114 | **0/200** (20/60 with the old code put back) | 2m54s | 11 hand-verified addresses replayed offline in 2.8s; live `hermes verify` 11/11 in 1m39s |
+| 2026-09-19 | Step 3: UUPS and beacon paths | 127 | 0 | 6m37s | 13 verified rows; more nodes probed at 1 call/s, so the scan more than doubled |
 
 ## PRD §8 minimum bar
 
@@ -29,7 +36,7 @@ row is what the next deploy will serve; it is not live until it is deployed.
 |---|---|
 | Deployed, public, no login | Yes |
 | ≥500 proxies indexed and ranked | No: 58 covered |
-| Ten protocols hand-verified | **Yes: 11**, by shape, replayed in CI ([docs/verification.md](verification.md)). The human "open every link" pass is still Sharif's |
+| Ten protocols hand-verified | **Yes: 13**, by shape, replayed in CI ([docs/verification.md](verification.md)). The human "open every link" pass is still Sharif's |
 | README a stranger can follow | Yes, and the headline claim is now correct |
 | One published write-up | No |
 
@@ -43,6 +50,13 @@ row is what the next deploy will serve; it is not live until it is deployed.
   upgrade path (Coordinator multisig plus Security Council).
 - **2026-09-19: the other five single-key roots are genuine.** Each one's unaliased address
   has no code on Ethereum, on two independent endpoints.
+- **2026-09-19: `0x31e9…0c17`, the admin of 7 proxies, is a trading contract**, not an
+  authority interface Hermes knows. Its selectors decode to `getAllTesseraPools()`,
+  `swapAmount(...)`, `killContract()` and a bespoke `multiSigOwner()` that returns a 1-of-2
+  Safe. Nothing establishes that getter gates upgrades, so it stays `unrecognized_interface`
+  rather than becoming a guess.
+- **2026-09-19: one EOA (`0xb045…7adb`) is `owner()` of three UUPS proxies**, Medium
+  confidence because `owner()` answering does not prove it gates upgrades.
 - **2026-09-19: the `database is locked` flake was the WAL switch, not the migration.** All 29
   captured failures were at connect: sqlx issued `journal_mode = WAL` on every pooled
   connection, and SQLite will not wait for that lock through the busy timeout. One switch with

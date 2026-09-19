@@ -44,6 +44,25 @@ pub struct ProxyRecord {
     pub compromise_depth: Option<i64>,
     pub timelock_seconds: Option<i64>,
     pub resolution_confidence: Option<String>,
+    /// Where the walk started: `admin_slot`, `beacon` or `uups_owner`.
+    pub upgrade_path: Option<String>,
+    /// Why a covered proxy has no root: `no_upgrade_path`, `uups_unconfirmed`,
+    /// `unrecognized_interface` or `rpc_undetermined`. Null whenever there is a root.
+    pub unresolved_reason: Option<String>,
+    /// Why a root has no key count: `truncated`, `cycle` or `owners_unknown`.
+    pub depth_unknown_reason: Option<String>,
+}
+
+impl ProxyRecord {
+    /// Whether this row's resolution is an answer about the chain: a root, or a real reason
+    /// there is none. A row the resolver never reached, or one it could not read, is not.
+    pub fn resolution_is_settled(&self) -> bool {
+        self.terminal_authority.is_some()
+            || self
+                .unresolved_reason
+                .as_deref()
+                .is_some_and(|reason| reason != "rpc_undetermined")
+    }
 }
 
 /// One resolved authority and what it controls.
@@ -70,6 +89,13 @@ pub struct Coverage {
     pub resolved_proxies: i64,
     pub distinct_authorities: i64,
     pub last_scan: Option<i64>,
+    /// Covered proxies with no root, by why. The gap should explain itself, not just be a
+    /// number.
+    pub unresolved_by_reason: Vec<(String, i64)>,
+    /// Resolved proxies whose root has no key count, by why.
+    pub depth_unknown_by_reason: Vec<(String, i64)>,
+    /// Resolved proxies by where their walk started.
+    pub resolved_by_path: Vec<(String, i64)>,
 }
 
 const SCHEMA: &str = r#"
@@ -87,7 +113,10 @@ CREATE TABLE IF NOT EXISTS proxy (
     authority_kind         TEXT,
     compromise_depth       INTEGER,
     timelock_seconds       INTEGER,
-    resolution_confidence  TEXT
+    resolution_confidence  TEXT,
+    upgrade_path           TEXT,
+    unresolved_reason      TEXT,
+    depth_unknown_reason   TEXT
 );
 -- Exposure gets grouped by authority, and the admin column is what it groups on, so it is
 -- indexed from the start.
@@ -144,6 +173,9 @@ const ADDED_COLUMNS: &[AddedColumn] = &[
              compromise_depth = NULL, timelock_seconds = NULL, resolution_confidence = NULL",
         ),
     },
+    column("ALTER TABLE proxy ADD COLUMN upgrade_path TEXT"),
+    column("ALTER TABLE proxy ADD COLUMN unresolved_reason TEXT"),
+    column("ALTER TABLE proxy ADD COLUMN depth_unknown_reason TEXT"),
 ];
 
 /// Every column `row_to_record` reads, named rather than `*`.
@@ -158,7 +190,16 @@ macro_rules! proxy_columns {
     () => {
         "address, label, kind, impl_addr, admin_addr, beacon_addr, code_size, scanned_at, \
          terminal_authority, terminal_chain, authority_kind, compromise_depth, \
-         timelock_seconds, resolution_confidence"
+         timelock_seconds, resolution_confidence, upgrade_path, unresolved_reason, \
+         depth_unknown_reason"
+    };
+}
+
+/// The kinds v1 counts as covered, as SQL. Must match `ProxyKind::is_covered_proxy`; a test
+/// holds the two together.
+macro_rules! covered_kinds {
+    () => {
+        "('transparent','uups','beacon','eip1822','admin_only')"
     };
 }
 
@@ -223,8 +264,9 @@ impl Store {
             let res = sqlx::query(
                 r#"INSERT INTO proxy (address,label,kind,impl_addr,admin_addr,beacon_addr,code_size,scanned_at,
                                       terminal_authority,terminal_chain,authority_kind,compromise_depth,
-                                      timelock_seconds,resolution_confidence)
-                   VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+                                      timelock_seconds,resolution_confidence,upgrade_path,
+                                      unresolved_reason,depth_unknown_reason)
+                   VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
                    ON CONFLICT(address) DO UPDATE SET
                      label=COALESCE(excluded.label, proxy.label),
                      kind=excluded.kind,
@@ -233,24 +275,26 @@ impl Store {
                      beacon_addr=excluded.beacon_addr,
                      code_size=excluded.code_size,
                      scanned_at=excluded.scanned_at,
-                     -- Resolution runs after classification and can be absent on a run that
-                     -- only re-classified, so an incoming row with no root keeps the last known
-                     -- answer rather than blanking it. The columns move as one unit, though.
-                     -- COALESCE per column would let a new answer with an unknown key count
-                     -- inherit the old answer's number: a root that re-resolved from one EOA to
-                     -- a Safe of unknown depth would go on reporting "1".
-                     terminal_authority=CASE WHEN excluded.terminal_authority IS NULL
-                       THEN proxy.terminal_authority ELSE excluded.terminal_authority END,
-                     terminal_chain=CASE WHEN excluded.terminal_authority IS NULL
-                       THEN proxy.terminal_chain ELSE excluded.terminal_chain END,
-                     authority_kind=CASE WHEN excluded.terminal_authority IS NULL
-                       THEN proxy.authority_kind ELSE excluded.authority_kind END,
-                     compromise_depth=CASE WHEN excluded.terminal_authority IS NULL
-                       THEN proxy.compromise_depth ELSE excluded.compromise_depth END,
-                     timelock_seconds=CASE WHEN excluded.terminal_authority IS NULL
-                       THEN proxy.timelock_seconds ELSE excluded.timelock_seconds END,
-                     resolution_confidence=CASE WHEN excluded.terminal_authority IS NULL
-                       THEN proxy.resolution_confidence ELSE excluded.resolution_confidence END
+                     -- ?18 is whether the incoming resolution is settled (see
+                     -- `resolution_is_settled`). Settled answers replace every resolution column as
+                     -- one unit: per-column COALESCE let a new root inherit the old root's key
+                     -- count, and a root whose admin moved to an unrecognized contract has to
+                     -- stop being published. An incoming row that is not settled (the node would
+                     -- not answer, or resolution never ran) keeps the last known answer, because
+                     -- an outage has told me nothing about the chain.
+                     terminal_authority=CASE WHEN ?18 THEN excluded.terminal_authority ELSE proxy.terminal_authority END,
+                     terminal_chain=CASE WHEN ?18 THEN excluded.terminal_chain ELSE proxy.terminal_chain END,
+                     authority_kind=CASE WHEN ?18 THEN excluded.authority_kind ELSE proxy.authority_kind END,
+                     compromise_depth=CASE WHEN ?18 THEN excluded.compromise_depth ELSE proxy.compromise_depth END,
+                     timelock_seconds=CASE WHEN ?18 THEN excluded.timelock_seconds ELSE proxy.timelock_seconds END,
+                     resolution_confidence=CASE WHEN ?18 THEN excluded.resolution_confidence ELSE proxy.resolution_confidence END,
+                     upgrade_path=CASE WHEN ?18 THEN excluded.upgrade_path ELSE proxy.upgrade_path END,
+                     depth_unknown_reason=CASE WHEN ?18 THEN excluded.depth_unknown_reason ELSE proxy.depth_unknown_reason END,
+                     -- A row that keeps an old root has no reason to be unresolved; a row that
+                     -- has none keeps its last settled reason over a fresh "undetermined".
+                     unresolved_reason=CASE WHEN ?18 THEN excluded.unresolved_reason
+                       WHEN proxy.terminal_authority IS NOT NULL THEN NULL
+                       ELSE COALESCE(proxy.unresolved_reason, excluded.unresolved_reason) END
                    WHERE NOT (proxy.code_size > 0 AND excluded.code_size = 0)"#,
             )
             .bind(&r.address).bind(&r.label).bind(&r.kind)
@@ -258,6 +302,8 @@ impl Store {
             .bind(r.code_size).bind(r.scanned_at)
             .bind(&r.terminal_authority).bind(&r.terminal_chain).bind(&r.authority_kind)
             .bind(r.compromise_depth).bind(r.timelock_seconds).bind(&r.resolution_confidence)
+            .bind(&r.upgrade_path).bind(&r.unresolved_reason).bind(&r.depth_unknown_reason)
+            .bind(r.resolution_is_settled())
             .execute(&mut *tx).await?;
             n += res.rows_affected();
         }
@@ -271,9 +317,9 @@ impl Store {
             concat!(
                 "SELECT ",
                 proxy_columns!(),
-                " FROM proxy \
-             WHERE kind IN ('transparent','uups','beacon','eip1822','admin_only') \
-             ORDER BY code_size DESC"
+                " FROM proxy WHERE kind IN ",
+                covered_kinds!(),
+                " ORDER BY code_size DESC"
             )
         } else {
             concat!(
@@ -374,16 +420,12 @@ impl Store {
                 .iter()
                 .map(|r| (r.get::<String, _>("kind"), r.get::<i64, _>("c")))
                 .collect();
-        let covered = by_kind
-            .iter()
-            .filter(|(k, _)| {
-                matches!(
-                    k.as_str(),
-                    "transparent" | "uups" | "beacon" | "eip1822" | "admin_only"
-                )
-            })
-            .map(|(_, c)| c)
-            .sum();
+        let covered = self
+            .scalar(concat!(
+                "SELECT COUNT(*) FROM proxy WHERE kind IN ",
+                covered_kinds!()
+            ))
+            .await?;
         let row = sqlx::query(
             "SELECT COUNT(*) total, COUNT(DISTINCT admin_addr) admins, MAX(scanned_at) last, \
                     COUNT(terminal_authority) resolved, \
@@ -400,7 +442,42 @@ impl Store {
             resolved_proxies: row.get::<i64, _>("resolved"),
             distinct_authorities: row.get::<i64, _>("authorities"),
             last_scan: row.get::<Option<i64>, _>("last"),
+            // A covered proxy with no root and no reason was stored before reasons existed.
+            unresolved_by_reason: self
+                .counts(concat!(
+                    "SELECT COALESCE(unresolved_reason, 'not_attempted') k, COUNT(*) c FROM proxy \
+                     WHERE terminal_authority IS NULL AND kind IN ",
+                    covered_kinds!(),
+                    " GROUP BY k ORDER BY c DESC, k"
+                ))
+                .await?,
+            depth_unknown_by_reason: self
+                .counts(
+                    "SELECT COALESCE(depth_unknown_reason, 'unrecorded') k, COUNT(*) c FROM proxy \
+                     WHERE terminal_authority IS NOT NULL AND compromise_depth IS NULL \
+                     GROUP BY k ORDER BY c DESC, k",
+                )
+                .await?,
+            resolved_by_path: self
+                .counts(
+                    "SELECT COALESCE(upgrade_path, 'unrecorded') k, COUNT(*) c FROM proxy \
+                     WHERE terminal_authority IS NOT NULL GROUP BY k ORDER BY c DESC, k",
+                )
+                .await?,
         })
+    }
+
+    async fn scalar(&self, sql: &'static str) -> anyhow::Result<i64> {
+        Ok(sqlx::query_scalar(sql).fetch_one(&self.pool).await?)
+    }
+
+    async fn counts(&self, sql: &'static str) -> anyhow::Result<Vec<(String, i64)>> {
+        Ok(sqlx::query(sql)
+            .fetch_all(&self.pool)
+            .await?
+            .iter()
+            .map(|r| (r.get::<String, _>("k"), r.get::<i64, _>("c")))
+            .collect())
     }
 }
 
@@ -420,6 +497,9 @@ fn row_to_record(r: &sqlx::sqlite::SqliteRow) -> ProxyRecord {
         compromise_depth: r.get("compromise_depth"),
         timelock_seconds: r.get("timelock_seconds"),
         resolution_confidence: r.get("resolution_confidence"),
+        upgrade_path: r.get("upgrade_path"),
+        unresolved_reason: r.get("unresolved_reason"),
+        depth_unknown_reason: r.get("depth_unknown_reason"),
     }
 }
 
@@ -965,6 +1045,138 @@ mod tests {
             assert!(h.await.unwrap(), "concurrent open {i} failed to migrate");
         }
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The covered list lives in two languages. If they drift, `/coverage` and `/proxies`
+    /// disagree with the classifier about what a proxy is.
+    #[test]
+    fn the_sql_covered_list_matches_the_classifier() {
+        use crate::classify::ProxyKind::*;
+        let all = [
+            Transparent,
+            Uups,
+            Beacon,
+            Eip1822,
+            AdminOnly,
+            ZeppelinOs,
+            NotUpgradeable,
+            Eoa,
+        ];
+        let sql = covered_kinds!();
+        for kind in all {
+            assert_eq!(
+                sql.contains(&format!("'{}'", kind.as_str())),
+                kind.is_covered_proxy(),
+                "{}",
+                kind.as_str()
+            );
+        }
+    }
+
+    fn unresolved(addr: &str, reason: &str) -> ProxyRecord {
+        ProxyRecord {
+            unresolved_reason: Some(reason.into()),
+            ..rec(addr, "transparent", Some("0xAdmin"))
+        }
+    }
+
+    /// An outage has told me nothing about the chain, so a root survives it.
+    #[tokio::test]
+    async fn an_undetermined_resolution_keeps_the_last_known_root() {
+        let s = mem().await;
+        s.upsert_many(&[resolved("0xA", "0xSafe", Some(3))])
+            .await
+            .unwrap();
+        s.upsert_many(&[unresolved("0xA", "rpc_undetermined")])
+            .await
+            .unwrap();
+        let p = s.get_proxy("0xA").await.unwrap().unwrap();
+        assert_eq!(p.terminal_authority.as_deref(), Some("0xSafe"));
+        assert_eq!(p.compromise_depth, Some(3));
+        assert_eq!(
+            p.unresolved_reason, None,
+            "a row with a root has nothing to explain"
+        );
+    }
+
+    /// A real finding does replace a root. The admin moved to something I do not recognize, and
+    /// going on publishing the old Safe would be a confident answer about the wrong contract.
+    #[tokio::test]
+    async fn a_settled_unresolved_answer_replaces_a_stale_root() {
+        let s = mem().await;
+        s.upsert_many(&[resolved("0xA", "0xSafe", Some(3))])
+            .await
+            .unwrap();
+        s.upsert_many(&[unresolved("0xA", "unrecognized_interface")])
+            .await
+            .unwrap();
+        let p = s.get_proxy("0xA").await.unwrap().unwrap();
+        assert_eq!(p.terminal_authority, None);
+        assert_eq!(p.compromise_depth, None);
+        assert_eq!(
+            p.unresolved_reason.as_deref(),
+            Some("unrecognized_interface")
+        );
+    }
+
+    /// With no root either way, an outage does not overwrite the last real reason.
+    #[tokio::test]
+    async fn an_outage_does_not_overwrite_a_settled_reason() {
+        let s = mem().await;
+        s.upsert_many(&[unresolved("0xA", "unrecognized_interface")])
+            .await
+            .unwrap();
+        s.upsert_many(&[
+            unresolved("0xA", "rpc_undetermined"),
+            unresolved("0xB", "rpc_undetermined"),
+        ])
+        .await
+        .unwrap();
+        let a = s.get_proxy("0xA").await.unwrap().unwrap();
+        let b = s.get_proxy("0xB").await.unwrap().unwrap();
+        assert_eq!(
+            a.unresolved_reason.as_deref(),
+            Some("unrecognized_interface")
+        );
+        assert_eq!(b.unresolved_reason.as_deref(), Some("rpc_undetermined"));
+    }
+
+    #[tokio::test]
+    async fn coverage_explains_every_gap() {
+        let s = mem().await;
+        let mut beacon = resolved("0xA", "0xSafe", Some(2));
+        beacon.upgrade_path = Some("beacon".into());
+        let mut cyclic = resolved("0xB", "0xSelf", None);
+        cyclic.upgrade_path = Some("admin_slot".into());
+        cyclic.depth_unknown_reason = Some("cycle".into());
+        s.upsert_many(&[
+            beacon,
+            cyclic,
+            unresolved("0xC", "unrecognized_interface"),
+            unresolved("0xD", "unrecognized_interface"),
+            unresolved("0xE", "uups_unconfirmed"),
+            rec("0xF", "transparent", Some("0xNeverResolved")),
+            rec("0x10", "zeppelin_os", None),
+        ])
+        .await
+        .unwrap();
+        let c = s.coverage().await.unwrap();
+        assert_eq!(
+            c.unresolved_by_reason,
+            vec![
+                ("unrecognized_interface".to_string(), 2),
+                ("not_attempted".to_string(), 1),
+                ("uups_unconfirmed".to_string(), 1),
+            ],
+            "every covered proxy without a root is accounted for, and nothing else is"
+        );
+        assert_eq!(c.depth_unknown_by_reason, vec![("cycle".to_string(), 1)]);
+        assert_eq!(
+            c.resolved_by_path,
+            vec![("admin_slot".to_string(), 1), ("beacon".to_string(), 1)]
+        );
+        let explained: i64 = c.unresolved_by_reason.iter().map(|(_, n)| n).sum();
+        assert_eq!(explained, c.covered_proxies - c.resolved_proxies);
     }
 
     #[tokio::test]

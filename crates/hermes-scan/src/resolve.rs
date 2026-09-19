@@ -15,7 +15,9 @@
 use crate::rpc::ChainRpc;
 use alloy::primitives::{Address, B256, Bytes, U256, keccak256};
 use futures::stream::{self, StreamExt};
-use hermes_core::{AuthorityProbe, Chain, Code, MAX_DEPTH, Node, edges, undo_l1_to_l2_alias};
+use hermes_core::{
+    AuthorityProbe, Chain, Code, IMPL_SLOT, MAX_DEPTH, Node, edges, undo_l1_to_l2_alias,
+};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -303,6 +305,18 @@ impl AuthorityScanner {
         })
     }
 
+    /// Whether `implementation` says it is UUPS: `proxiableUUID()` returning the ERC-1967
+    /// implementation slot, as OpenZeppelin's and Solady's `UUPSUpgradeable` both do. Asked of
+    /// the implementation directly, because OpenZeppelin marks it `notDelegated` and it
+    /// reverts through the proxy. `None` when the node would not tell me.
+    pub async fn is_uups(&self, implementation: Address) -> Option<bool> {
+        let answer = self
+            .call(Node::base(implementation), selector("proxiableUUID()"))
+            .await
+            .settled()?;
+        Some(answer.is_some_and(|b| b.as_ref() == IMPL_SLOT.as_slice()))
+    }
+
     /// Gather every probe reachable from `roots` within the depth limit.
     ///
     /// Levels `0..=MAX_DEPTH`, because that is how deep the key count reads: a Safe standing
@@ -350,6 +364,7 @@ mod tests {
         assert_eq!(selector("getThreshold()"), [0xe7, 0x52, 0x35, 0xb8]);
         assert_eq!(selector("owner()"), [0x8d, 0xa5, 0xcb, 0x5b]);
         assert_eq!(selector("getMinDelay()"), [0xf2, 0x7a, 0x0c, 0x92]);
+        assert_eq!(selector("proxiableUUID()"), [0x52, 0xd1, 0x90, 0x2d]);
     }
 
     fn word(hex_tail: &str) -> Vec<u8> {

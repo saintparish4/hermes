@@ -11,7 +11,10 @@
       "authority_kind": "safe",
       "compromise_depth": 11,
       "timelock_seconds": 0,
-      "confidence": "high"
+      "confidence": "high",
+      "upgrade_path": "admin_slot",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
@@ -38,7 +41,10 @@
       "authority_kind": "safe",
       "compromise_depth": 11,
       "timelock_seconds": 0,
-      "confidence": "high"
+      "confidence": "high",
+      "upgrade_path": "admin_slot",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
@@ -63,7 +69,10 @@
       "authority_kind": "safe",
       "compromise_depth": 11,
       "timelock_seconds": 0,
-      "confidence": "high"
+      "confidence": "high",
+      "upgrade_path": "admin_slot",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
@@ -87,7 +96,10 @@
       "authority_kind": "safe",
       "compromise_depth": 3,
       "timelock_seconds": 0,
-      "confidence": "high"
+      "confidence": "high",
+      "upgrade_path": "admin_slot",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
@@ -112,7 +124,10 @@
       "authority_kind": "safe",
       "compromise_depth": 3,
       "timelock_seconds": 0,
-      "confidence": "high"
+      "confidence": "high",
+      "upgrade_path": "admin_slot",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
@@ -137,7 +152,10 @@
       "authority_kind": "eoa",
       "compromise_depth": 1,
       "timelock_seconds": 0,
-      "confidence": "high"
+      "confidence": "high",
+      "upgrade_path": "admin_slot",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
@@ -162,13 +180,16 @@
       "authority_kind": null,
       "compromise_depth": null,
       "timelock_seconds": null,
-      "confidence": null
+      "confidence": null,
+      "upgrade_path": null,
+      "unresolved_reason": "unrecognized_interface",
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x31e9..0c17, 15,609 bytes of code; getOwners(), getThreshold(), owner() and getMinDelay() all return empty data. Nothing recognized, so the honest answer is no root.",
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x31e9..0c17, 15,609 bytes of code; getOwners(), getThreshold(), owner() and getMinDelay() all return empty data. Nothing recognized, so the honest answer is no root. Its bytecode's selectors decode to a trading contract (getAllTesseraPools(), swapAmount(...), killContract()) with a bespoke multiSigOwner() getter; nothing establishes that getter gates upgrades, so it is not guessed at.",
       "urls": [
         "https://basescan.org/address/0x31e99E05fee3DCE580af777C3fD63eE1B3B40c17#code"
       ]
@@ -178,7 +199,7 @@
     "name": "usd-plus",
     "address": "0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376",
     "label": "USD+",
-    "shape": "UUPS: upgrade rights live in the implementation, not in an admin slot",
+    "shape": "UUPS confirmed, access control not recognized: proxiableUUID() says UUPS, owner() is absent",
     "expected": {
       "kind": "uups",
       "terminal_authority": null,
@@ -186,15 +207,75 @@
       "authority_kind": null,
       "compromise_depth": null,
       "timelock_seconds": null,
-      "confidence": null
+      "confidence": null,
+      "upgrade_path": null,
+      "unresolved_reason": "unrecognized_interface",
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Implementation slot set, admin and beacon slots zero. Hermes follows only the admin slot, so no root is expected.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot = 0xe120..3cfD, admin and beacon slots zero. The implementation answers proxiableUUID() with the ERC-1967 implementation slot, so upgrades are UUPS and run through the proxy. Through the proxy, owner(), getOwners(), getThreshold() and getMinDelay() all revert: upgrades are gated by something other than an owner, so no root is expected.",
       "urls": [
-        "https://basescan.org/address/0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376#readProxyContract"
+        "https://basescan.org/address/0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376#readProxyContract",
+        "https://basescan.org/address/0xe1201f02C02e468c7fF6F61AFff505A859673cfD#readContract"
+      ]
+    }
+  },
+  {
+    "name": "uups-owner",
+    "address": "0xFFC8519CAd3a02DB4252DFcfC81F15A2BEFbb9E4",
+    "label": "Unlabelled UUPS proxy",
+    "shape": "UUPS resolved through owner(): confirmed UUPS, root found, capped at Medium",
+    "expected": {
+      "kind": "uups",
+      "terminal_authority": "0xb045571f321dff9de46ecc204d128aa68be47adb",
+      "terminal_chain": "base",
+      "authority_kind": "eoa",
+      "compromise_depth": 1,
+      "timelock_seconds": 0,
+      "confidence": "medium",
+      "upgrade_path": "uups_owner",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot = 0x4d5B..8e84, admin and beacon slots zero. The implementation answers proxiableUUID() with the ERC-1967 implementation slot. Through the proxy, owner() = 0xb045..7adb, which has no code on Base; its unaliased address 0x9f34..69ca has no code on Ethereum. One key, but only Medium: answering owner() does not prove owner() is what _authorizeUpgrade checks. The same key is owner() of two more UUPS proxies in the index.",
+      "urls": [
+        "https://basescan.org/address/0xFFC8519CAd3a02DB4252DFcfC81F15A2BEFbb9E4#readProxyContract",
+        "https://basescan.org/address/0xb045571F321dfF9DE46eCc204D128aa68BE47adb"
+      ]
+    }
+  },
+  {
+    "name": "uups-unconfirmed",
+    "address": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+    "label": "Unlabelled implementation-slot proxy",
+    "shape": "Implementation slot and no admin, but the implementation denies being UUPS",
+    "expected": {
+      "kind": "uups",
+      "terminal_authority": null,
+      "terminal_chain": null,
+      "authority_kind": null,
+      "compromise_depth": null,
+      "timelock_seconds": null,
+      "confidence": null,
+      "upgrade_path": null,
+      "unresolved_reason": "uups_unconfirmed",
+      "depth_unknown_reason": null
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot = 0xA4Ab..dFdB, admin and beacon slots zero. proxiableUUID() on the implementation reverts, so nothing establishes that upgrade logic lives there; the proxy itself answers none of the probes. No root is expected, and the reason is named rather than guessed.",
+      "urls": [
+        "https://basescan.org/address/0xA238Dd80C259a72e81d7e4664a9801593F98d1c5#code",
+        "https://basescan.org/address/0xA4AbC5FcBA6D0d7E3D144d6dbF6cb6128599dFdB#code"
       ]
     }
   },
@@ -202,24 +283,27 @@
     "name": "beacon-proxy",
     "address": "0xCd76E4e8D7F498A728cfAfe088fB3e6fCBbfaB21",
     "label": "Unlabelled beacon proxy",
-    "shape": "Beacon: upgrade rights belong to whoever controls the beacon",
+    "shape": "Beacon: the root is whoever controls the beacon, shared here by five proxies",
     "expected": {
       "kind": "beacon",
-      "terminal_authority": null,
-      "terminal_chain": null,
-      "authority_kind": null,
-      "compromise_depth": null,
-      "timelock_seconds": null,
-      "confidence": null
+      "terminal_authority": "0xc50932edd1c14272aa35324dfc45a19ec57839aa",
+      "terminal_chain": "base",
+      "authority_kind": "safe",
+      "compromise_depth": 2,
+      "timelock_seconds": 0,
+      "confidence": "high",
+      "upgrade_path": "beacon",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Implementation and admin slots zero, beacon slot = 0x0000..b2dc. Hermes follows only the admin slot, so no root is expected.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation and admin slots zero, beacon slot = 0x0000..b2dc (836 bytes of code). The beacon answers owner() = 0xc509..39aa and reverts on the Safe and Timelock probes. 0xc509..39aa is a Safe, getThreshold()=2 over 3 owners, none with code on Base or at their unaliased Ethereum address.",
       "urls": [
-        "https://basescan.org/address/0xCd76E4e8D7F498A728cfAfe088fB3e6fCBbfaB21",
-        "https://basescan.org/address/0x000000005aE5f42270cDf0E41960840e7FB1b2dc#readContract"
+        "https://basescan.org/address/0x000000005aE5f42270cDf0E41960840e7FB1b2dc#readContract",
+        "https://app.safe.global/settings/setup?safe=base:0xc50932edd1c14272aa35324dfc45a19ec57839aa"
       ]
     }
   },
@@ -235,7 +319,10 @@
       "authority_kind": null,
       "compromise_depth": null,
       "timelock_seconds": null,
-      "confidence": null
+      "confidence": null,
+      "upgrade_path": null,
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",
@@ -259,7 +346,10 @@
       "authority_kind": null,
       "compromise_depth": null,
       "timelock_seconds": null,
-      "confidence": null
+      "confidence": null,
+      "upgrade_path": null,
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
     },
     "checked": {
       "on": "2026-09-19",

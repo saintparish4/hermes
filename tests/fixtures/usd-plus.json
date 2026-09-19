@@ -5,7 +5,7 @@
     "base": 51526000,
     "ethereum": 26013200
   },
-  "recorded_at": 1789841819,
+  "recorded_at": 1789844547,
   "reads": {
     "base": {
       "storage": {
@@ -23,7 +23,27 @@
           "keccak256": "0x932cddc50793da935ccf915651ad67f6b746e9936fcc5614f0ff492563782c75"
         }
       },
-      "call": {}
+      "call": {
+        "0xb79dd08ea68a908a97220c76d19a6aa9cbde4376": {
+          "0x8da5cb5b": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xa0e67e2b": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xe75235b8": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xf27a0c92": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          }
+        },
+        "0xe1201f02c02e468c7ff6f61afff505a859673cfd": {
+          "0x52d1902d": {
+            "ok": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+          }
+        }
+      }
     },
     "ethereum": {
       "storage": {},

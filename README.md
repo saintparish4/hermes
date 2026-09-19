@@ -6,6 +6,8 @@ A Base-native scanner that ranks upgrade authorities by what they control: if an
 
 20 of the 62 contracts currently indexed — the OP Stack predeploys — answer to **one authority: a 2-of-2 Safe on Ethereum**, acting on Base through its L1→L2 alias. Its owners are a 3-of-6 and an 8-of-11 Safe, so taking control takes **11 keys**. A contract-indexed tool shows 62 rows of equal weight; this is the difference.
 
+The admin slot is only one of three places upgrade rights live, so Hermes follows all three: the ERC-1967 admin, a beacon proxy's beacon, and a UUPS proxy's own `owner()`. Six beacon proxies in the index answer to one 2-of-3 Safe through a shared beacon; one EOA is `owner()` of three UUPS proxies. Of 58 covered proxies, 43 resolve to a root, and each of the other 15 carries a named reason (see `/coverage`).
+
 **Correction.** Until 2026-09-19 this README, and the live `/authorities` page, said that one *EOA* controlled those 20 contracts. That was wrong. The `ProxyAdmin`'s owner has no code on Base because it is the L2 alias of a contract on Ethereum, and Hermes read "no code" as "a single key". The resolver now checks the unaliased address on L1 before it will call anything a key. The five remaining single-key authorities were re-checked the same way and are genuine.
 
 ## Requirements:
@@ -94,8 +96,9 @@ Shipped today:
 - **Negative-read merging** — the exact spurious-blank case that would otherwise turn a live proxy into "not upgradeable".
 - **The resolver** — cheapest-m-of-n key arithmetic, cycles, depth truncation, confidence that only falls, thresholds that lie, and the aggregation property: two proxies under distinct `ProxyAdmin`s sharing one Safe collapse to a single authority.
 - **L1→L2 aliasing** — the alias arithmetic against the real `0x8cC5…6a6d ↔ 0x7bB4…595c` pair, including wrap-around at both ends of the address space; the live predeploy structure resolving to a Safe on Ethereum at 11 keys; its leaf keys landing exactly on the depth cap; an unread L1 staying undetermined rather than becoming a key; and the same address on two chains being two accounts.
-- **The hand-verified table** — eleven addresses chosen by shape ([docs/verification.md](docs/verification.md)): the L1-aliased predeploy authority, the self-administered `ProxyAdmin`, an `AdminOnly` predeploy, a Safe as direct admin, a `ProxyAdmin` under a Safe, a genuine single key, an admin that is honestly unknown, UUPS, beacon, USDC (not covered) and WETH9 (not upgradeable). Each has a fixture recorded at the block its expectation was checked at, and CI replays every one through the production pipeline. Replay is keyed by (chain, method, address, slot or calldata), never by arrival order, and a read the recording never saw fails loudly instead of looking like an outage.
+- **The hand-verified table** — thirteen addresses chosen by shape ([docs/verification.md](docs/verification.md)): the L1-aliased predeploy authority, the self-administered `ProxyAdmin`, an `AdminOnly` predeploy, a Safe as direct admin, a `ProxyAdmin` under a Safe, a genuine single key, an admin that is honestly unknown, a UUPS proxy resolved through `owner()`, one whose implementation denies being UUPS, one that is UUPS but not owner-gated, a beacon proxy resolved through its beacon, USDC (not covered) and WETH9 (not upgradeable). Each has a fixture recorded at the block its expectation was checked at, and CI replays every one through the production pipeline. Replay is keyed by (chain, method, address, slot or calldata), never by arrival order, and a read the recording never saw fails loudly instead of looking like an outage.
 - **Concurrent opens** — eight processes' worth of `Store::open` against one file, spawned rather than awaited in turn. It used to fail 18 times in 60 with `database is locked`: switching a file into WAL needs a lock SQLite will not wait for through the busy timeout, and every pooled connection was asking. The switch now happens once, with a bounded retry, and the migration runs in one `BEGIN IMMEDIATE` transaction. 0 failures in 200 runs; 20 in 60 with the old per-connection switch put back.
+- **Upgrade paths and reasons** — which entry each proxy kind walks from, the UUPS `proxiableUUID()` gate and Medium ceiling, the two kinds of Unknown kept apart (an outage vs. a contract that answered nothing recognizable), and the store rule that an outage keeps a stored root while a real finding replaces it.
 - **Store and API** — upsert idempotency, label preservation, the grouping properties, resolution columns replaced as a unit (so a new root never inherits the old root's key count), one-time retraction of resolutions made before aliasing was modelled, reads that name their columns (a `SELECT *` on a pooled connection with a pre-migration schema panicked the driver 7 times in 60), default filtering, 404-not-500, 409 on a cross-chain ambiguous authority, case-insensitive lookup.
 
 Each fix above was checked by putting the bug back and watching its test fail.
@@ -170,6 +173,19 @@ ERC-1967 standardizes three storage slots, each computed as `bytes32(uint256(kec
 
 Implementation + admin set → Transparent proxy. Implementation set, admin zero → UUPS. Beacon set → Beacon proxy. All zero → probe the EIP-1822 `PROXIABLE` slot, otherwise not upgradeable.
 
+### Where upgrade rights live
+
+Before walking anything, Hermes decides where the power to upgrade each proxy actually sits:
+
+| Proxy | Walk starts at | Confidence ceiling |
+|---|---|---|
+| Transparent, AdminOnly | the ERC-1967 admin | High |
+| Beacon | the beacon, whose controller upgrades every proxy pointing at it | High |
+| UUPS | the proxy itself, asked `owner()` through its implementation, **only after** the implementation answers `proxiableUUID()` with the ERC-1967 slot | Medium: answering `owner()` does not prove `owner` is what `_authorizeUpgrade` checks |
+| EIP-1822 without an ERC-1967 implementation | nowhere: `no_upgrade_path` | — |
+
+A covered proxy with no root always says why: `unrecognized_interface` (the walk reached a contract answering nothing Hermes recognizes), `uups_unconfirmed` (the implementation denies being UUPS), `no_upgrade_path`, or `rpc_undetermined` (a node would not answer). A root with no key count says why too: `truncated`, `cycle`, or `owners_unknown`. An outage never replaces a stored root; a real finding does.
+
 ### Authority resolution
 
 An admin address is resolved to a governance structure by probing interfaces and recursing to depth 4 with cycle detection:
@@ -197,6 +213,8 @@ hand-curated seed (62 addresses)
       ↓
 eth_getStorageAt × 5 slots + eth_getCode → proxy classification → admin address
       ↓
+upgrade entry per proxy: admin slot, beacon, or proxiableUUID()-confirmed UUPS owner()
+      ↓
 recursive authority resolution on Base, crossing to Ethereum through L1→L2 aliases
       ↓
 GROUP BY (terminal_authority, terminal_chain)
@@ -214,7 +232,7 @@ Served today:
 - `GET /authorities/{address}` — one authority and every proxy it controls. If the same address is a root on both Base and Ethereum, pass `?chain=base` or `?chain=ethereum`; without it the answer is a 409 naming both, not whichever row sorts first.
 - `GET /proxies` — covered proxies with their classification and resolved root (`?all=true` includes non-proxies).
 - `GET /proxies/{address}` — one proxy.
-- `GET /coverage` — scan counts, resolved count, distinct roots, last scan time.
+- `GET /coverage` — scan counts, resolved count, distinct roots, last scan time, and the gap explained: `unresolved_by_reason`, `depth_unknown_by_reason`, and `resolved_by_path`.
 - `GET /healthz` — plain `ok`, never touches SQLite.
 
 Planned: ranking by `authority_var` once exposure exists, and `GET /methodology`.

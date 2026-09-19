@@ -34,6 +34,9 @@ pub struct Expected {
     pub compromise_depth: Option<i64>,
     pub timelock_seconds: Option<i64>,
     pub confidence: Option<String>,
+    pub upgrade_path: Option<String>,
+    pub unresolved_reason: Option<String>,
+    pub depth_unknown_reason: Option<String>,
 }
 
 /// How the expectation was established, so a failure can be re-checked by hand in a minute.
@@ -101,6 +104,21 @@ pub fn differences(expected: &Expected, actual: Option<&ProxyRecord>) -> Vec<Str
         show(&expected.confidence),
         show(&actual.resolution_confidence),
     );
+    check(
+        "upgrade_path",
+        show(&expected.upgrade_path),
+        show(&actual.upgrade_path),
+    );
+    check(
+        "unresolved_reason",
+        show(&expected.unresolved_reason),
+        show(&actual.unresolved_reason),
+    );
+    check(
+        "depth_unknown_reason",
+        show(&expected.depth_unknown_reason),
+        show(&actual.depth_unknown_reason),
+    );
     out
 }
 
@@ -143,7 +161,10 @@ pub fn render_markdown(rows: &[VerifiedRow]) -> String {
                     let kind = e.authority_kind.as_deref().unwrap_or("?");
                     format!("{kind} {}", short(&a))
                 })
-                .unwrap_or_else(|| "unresolved".into()),
+                .unwrap_or_else(|| match &e.unresolved_reason {
+                    Some(reason) => format!("unresolved: `{reason}`"),
+                    None => "unresolved".into(),
+                }),
             e.terminal_chain.clone().unwrap_or_else(dash),
             e.compromise_depth
                 .map(|d| d.to_string())
@@ -178,6 +199,7 @@ mod tests {
             compromise_depth: Some(11),
             timelock_seconds: Some(0),
             resolution_confidence: Some("high".into()),
+            upgrade_path: Some("admin_slot".into()),
             ..Default::default()
         }
     }
@@ -191,6 +213,9 @@ mod tests {
             compromise_depth: Some(11),
             timelock_seconds: Some(0),
             confidence: Some("high".into()),
+            upgrade_path: Some("admin_slot".into()),
+            unresolved_reason: None,
+            depth_unknown_reason: None,
         }
     }
 
@@ -218,7 +243,7 @@ mod tests {
             kind: "transparent".into(),
             ..Default::default()
         };
-        assert_eq!(differences(&unresolved, Some(&record())).len(), 6);
+        assert_eq!(differences(&unresolved, Some(&record())).len(), 7);
     }
 
     #[test]

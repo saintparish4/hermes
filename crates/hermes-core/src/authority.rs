@@ -118,6 +118,85 @@ pub struct Resolution {
     pub truncated: bool,
     /// The walk re-entered an address it had already visited.
     pub cycle: bool,
+    /// The walk stopped at a node nobody answered for. Different from a node that answered
+    /// and was not recognized: one is the network's failure, the other is a real finding.
+    pub unanswered: bool,
+}
+
+/// Why a resolution has no root I will publish.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unresolved {
+    /// A covered kind with no upgrade entry point I model.
+    NoUpgradePath,
+    /// Implementation set, no admin, but the implementation did not answer `proxiableUUID()`
+    /// with the ERC-1967 slot, so I cannot say the upgrade logic lives there.
+    UupsUnconfirmed,
+    /// The walk reached a contract that answered none of the interfaces I recognize.
+    UnrecognizedInterface,
+    /// A node would not answer a read the walk needed.
+    RpcUndetermined,
+}
+
+impl Unresolved {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NoUpgradePath => "no_upgrade_path",
+            Self::UupsUnconfirmed => "uups_unconfirmed",
+            Self::UnrecognizedInterface => "unrecognized_interface",
+            Self::RpcUndetermined => "rpc_undetermined",
+        }
+    }
+}
+
+/// Why a published root has no key count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DepthGap {
+    Truncated,
+    Cycle,
+    /// Some owner under a Safe could not be identified. One unknown owner could be a single
+    /// key, so the whole count is unknown rather than counted without it.
+    OwnersUnknown,
+}
+
+impl DepthGap {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Truncated => "truncated",
+            Self::Cycle => "cycle",
+            Self::OwnersUnknown => "owners_unknown",
+        }
+    }
+}
+
+impl Resolution {
+    /// Why there is no root to publish, or `None` when there is one.
+    pub fn unresolved(&self) -> Option<Unresolved> {
+        (self.confidence == Confidence::Unknown).then_some(if self.unanswered {
+            Unresolved::RpcUndetermined
+        } else {
+            Unresolved::UnrecognizedInterface
+        })
+    }
+
+    /// Why a root that is published has no key count, or `None` when it has one.
+    pub fn depth_gap(&self) -> Option<DepthGap> {
+        if self.unresolved().is_some() || self.compromise_depth.is_some() {
+            return None;
+        }
+        Some(if self.cycle {
+            DepthGap::Cycle
+        } else if self.truncated {
+            DepthGap::Truncated
+        } else {
+            DepthGap::OwnersUnknown
+        })
+    }
+
+    /// The same resolution, trusted no more than `ceiling`. Confidence only ever falls.
+    pub fn capped(mut self, ceiling: Confidence) -> Self {
+        self.confidence = self.confidence.min(ceiling);
+        self
+    }
 }
 
 /// Decide what an address is from what it answered, plus whether the answers conflict.
@@ -179,6 +258,7 @@ struct Stop {
     timelock_seconds: u64,
     truncated: bool,
     cycle: bool,
+    unanswered: bool,
 }
 
 /// Follow ownership until something terminal, unrecognized, cyclic or too deep stops it.
@@ -190,6 +270,7 @@ fn walk(start: Node, probes: &HashMap<Node, AuthorityProbe>, path: &mut Vec<Node
         timelock_seconds: 0,
         truncated: false,
         cycle: false,
+        unanswered: false,
     };
     let mut current = start;
 
@@ -204,6 +285,7 @@ fn walk(start: Node, probes: &HashMap<Node, AuthorityProbe>, path: &mut Vec<Node
         let Some(probe) = probes.get(&current) else {
             stop.kind = AuthorityKind::Unknown;
             stop.confidence = Confidence::Unknown;
+            stop.unanswered = true;
             return stop;
         };
 
@@ -328,6 +410,7 @@ pub fn resolve(admin: Node, probes: &HashMap<Node, AuthorityProbe>) -> Resolutio
         path,
         truncated: stop.truncated,
         cycle: stop.cycle,
+        unanswered: stop.unanswered,
     }
 }
 
@@ -540,6 +623,61 @@ mod tests {
         let r = resolve_base(A, &g);
         assert_eq!(r.confidence, Confidence::Unknown);
         assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.unresolved(), Some(Unresolved::RpcUndetermined));
+    }
+
+    /// The two kinds of Unknown are different findings. "The node would not say" is an outage;
+    /// "it said, and I do not recognize it" is a gap in the model worth naming.
+    #[test]
+    fn an_unrecognized_contract_and_an_unanswered_read_are_different_reasons() {
+        let unrecognized = graph(&[(A, ownable(B)), (B, AuthorityProbe::default())]);
+        let unanswered = graph(&[(A, ownable(B))]);
+        assert_eq!(
+            resolve_base(A, &unrecognized).unresolved(),
+            Some(Unresolved::UnrecognizedInterface)
+        );
+        assert_eq!(
+            resolve_base(A, &unanswered).unresolved(),
+            Some(Unresolved::RpcUndetermined)
+        );
+    }
+
+    #[test]
+    fn a_published_root_without_a_key_count_says_why() {
+        let cycle = graph(&[(A, ownable(A))]);
+        let long = graph(&[
+            (A, ownable(B)),
+            (B, ownable(C)),
+            (C, ownable(D)),
+            (D, ownable(E)),
+            (E, eoa()),
+        ]);
+        let unknown_owner = graph(&[(A, safe(1, &[B, C])), (B, eoa())]);
+        assert_eq!(resolve_base(A, &cycle).depth_gap(), Some(DepthGap::Cycle));
+        assert_eq!(
+            resolve_base(A, &long).depth_gap(),
+            Some(DepthGap::Truncated)
+        );
+        let r = resolve_base(A, &unknown_owner);
+        assert_eq!(r.unresolved(), None, "the Safe itself is a real root");
+        assert_eq!(r.depth_gap(), Some(DepthGap::OwnersUnknown));
+        assert_eq!(resolve_base(A, &graph(&[(A, eoa())])).depth_gap(), None);
+    }
+
+    #[test]
+    fn a_cap_lowers_confidence_and_never_raises_it() {
+        let g = graph(&[(A, eoa())]);
+        assert_eq!(
+            resolve_base(A, &g).capped(Confidence::Medium).confidence,
+            Confidence::Medium
+        );
+        let unknown = graph(&[(A, AuthorityProbe::default())]);
+        assert_eq!(
+            resolve_base(A, &unknown)
+                .capped(Confidence::High)
+                .confidence,
+            Confidence::Unknown
+        );
     }
 
     #[test]

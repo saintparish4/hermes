@@ -1,0 +1,40 @@
+{
+  "name": "uups-unconfirmed",
+  "target": "0xa238dd80c259a72e81d7e4664a9801593f98d1c5",
+  "blocks": {
+    "base": 51526000,
+    "ethereum": 26013200
+  },
+  "recorded_at": 1789845196,
+  "reads": {
+    "base": {
+      "storage": {
+        "0xa238dd80c259a72e81d7e4664a9801593f98d1c5": {
+          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x000000000000000000000000a4abc5fcba6d0d7e3d144d6dbf6cb6128599dfdb",
+          "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "code": {
+        "0xa238dd80c259a72e81d7e4664a9801593f98d1c5": {
+          "size": 1933,
+          "keccak256": "0xffcb26fbebbe09d9b0d8baef76a1fa218989be6c279b7acf9865d8fb6e0718ce"
+        }
+      },
+      "call": {
+        "0xa4abc5fcba6d0d7e3d144d6dbf6cb6128599dfdb": {
+          "0x52d1902d": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          }
+        }
+      }
+    },
+    "ethereum": {
+      "storage": {},
+      "code": {},
+      "call": {}
+    }
+  }
+}

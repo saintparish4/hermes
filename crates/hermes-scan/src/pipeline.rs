@@ -8,8 +8,11 @@ use crate::probe::{ProbeOutcome, Scanner};
 use crate::resolve::AuthorityScanner;
 use alloy::primitives::Address;
 use hermes_core::store::checksum;
-use hermes_core::{Confidence, Node, ProxyRecord, resolve};
-use std::collections::HashSet;
+use hermes_core::{
+    Classified, Node, ProxyRecord, Resolution, UpgradeEntry, resolve, upgrade_entry,
+    uups_implementation,
+};
+use std::collections::{HashMap, HashSet};
 
 /// One address to scan, and the hand-written label to store with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +37,13 @@ pub struct Scanned {
     pub counts: ScanCounts,
 }
 
+/// What one probe established, carried until resolution has written its root onto `record`.
+struct Found {
+    address: Address,
+    record: ProxyRecord,
+    classified: Classified,
+}
+
 /// Scan `targets` and resolve what they found.
 pub async fn scan_and_resolve(
     scanner: &Scanner,
@@ -45,12 +55,15 @@ pub async fn scan_and_resolve(
         .scan(targets.iter().map(|t| t.address).collect())
         .await;
     let mut counts = ScanCounts::default();
-    let mut records: Vec<ProxyRecord> = results
+    let mut found: Vec<Found> = results
         .iter()
         .filter_map(|(addr, outcome)| record(*addr, outcome, targets, scanned_at, &mut counts))
         .collect();
-    counts.resolved = resolve_authorities(authorities, &mut records).await;
-    Scanned { records, counts }
+    counts.resolved = resolve_authorities(authorities, &mut found).await;
+    Scanned {
+        records: found.into_iter().map(|f| f.record).collect(),
+        counts,
+    }
 }
 
 /// The row one probe earns, or `None` when it earned nothing publishable.
@@ -60,7 +73,7 @@ fn record(
     targets: &[Target],
     scanned_at: i64,
     counts: &mut ScanCounts,
-) -> Option<ProxyRecord> {
+) -> Option<Found> {
     let o = match outcome {
         Ok(o) => o,
         Err(e) => {
@@ -84,7 +97,7 @@ fn record(
         return None;
     };
     counts.ok += 1;
-    Some(ProxyRecord {
+    let record = ProxyRecord {
         address: checksum(addr),
         label: targets
             .iter()
@@ -98,6 +111,11 @@ fn record(
         scanned_at,
         // Filled in by the resolution pass.
         ..Default::default()
+    };
+    Some(Found {
+        address: addr,
+        record,
+        classified: c,
     })
 }
 
@@ -105,43 +123,81 @@ fn skipped(addr: Address, why: &str) {
     tracing::warn!(%addr, why, "address skipped");
 }
 
-/// Walk every distinct admin to its root and write the answer back onto each proxy.
+/// Ask each distinct UUPS implementation whether it really is one.
+async fn confirm_uups(
+    scanner: &AuthorityScanner,
+    found: &[Found],
+) -> HashMap<Address, Option<bool>> {
+    let implementations: HashSet<Address> = found
+        .iter()
+        .filter_map(|f| uups_implementation(&f.classified))
+        .collect();
+    let mut confirmed = HashMap::new();
+    for implementation in implementations {
+        confirmed.insert(implementation, scanner.is_uups(implementation).await);
+    }
+    confirmed
+}
+
+/// Walk every proxy's upgrade entry to its root and write the answer back onto its row.
 ///
 /// Done as a second pass rather than inline so the probe collection can be batched across
-/// every admin at once. Admins are shared heavily — one ProxyAdmin governs twenty contracts
-/// on Base — so resolving per proxy would re-walk the same subgraph twenty times.
-async fn resolve_authorities(scanner: &AuthorityScanner, records: &mut [ProxyRecord]) -> usize {
-    let admins: Vec<Node> = records
+/// every entry at once. Entries are shared heavily — one ProxyAdmin governs twenty contracts
+/// on Base, one beacon five — so resolving per proxy would re-walk the same subgraph each time.
+async fn resolve_authorities(scanner: &AuthorityScanner, found: &mut [Found]) -> usize {
+    let uups = confirm_uups(scanner, found).await;
+    let entries: Vec<_> = found
         .iter()
-        .filter_map(|r| r.admin.as_ref()?.parse().ok().map(Node::base))
+        .map(|f| {
+            let confirmed = uups_implementation(&f.classified)
+                .and_then(|implementation| uups.get(&implementation).copied().flatten());
+            upgrade_entry(f.address, &f.classified, confirmed)
+        })
+        .collect();
+    let roots: Vec<Node> = entries
+        .iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.start())
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
-    if admins.is_empty() {
-        return 0;
-    }
 
-    tracing::info!(count = admins.len(), "resolving authorities");
-    let probes = scanner.collect(admins).await;
+    tracing::info!(count = roots.len(), "resolving authorities");
+    let probes = scanner.collect(roots).await;
     let mut resolved = 0;
-
-    for record in records.iter_mut() {
-        let Some(admin) = record.admin.as_ref().and_then(|a| a.parse().ok()) else {
-            continue;
-        };
-        let r = resolve(Node::base(admin), &probes);
-        // An unresolved chain leaves the columns untouched, so the store keeps whatever it
-        // already knew instead of being told the authority disappeared.
-        if r.confidence == Confidence::Unknown {
-            continue;
+    for (f, entry) in found.iter_mut().zip(entries) {
+        match entry {
+            Some(Ok(entry))
+                if write_root(&mut f.record, entry, resolve(entry.start(), &probes)) =>
+            {
+                resolved += 1;
+            }
+            Some(Err(reason)) => f.record.unresolved_reason = Some(reason.as_str().into()),
+            Some(Ok(_)) | None => {}
         }
-        record.terminal_authority = Some(checksum(r.terminal.address));
-        record.terminal_chain = Some(r.terminal.chain.as_str().into());
-        record.authority_kind = Some(r.kind.as_str().into());
-        record.compromise_depth = r.compromise_depth.map(i64::from);
-        record.timelock_seconds = Some(r.timelock_seconds as i64);
-        record.resolution_confidence = Some(r.confidence.as_str().into());
-        resolved += 1;
     }
     resolved
+}
+
+/// Put one resolution onto a row, capped at what its entry point can support. Returns whether
+/// the row now has a root.
+///
+/// An unresolved walk records why and nothing else. The store decides what that means for a
+/// root it already holds: a real finding replaces it, an outage does not.
+fn write_root(record: &mut ProxyRecord, entry: UpgradeEntry, r: Resolution) -> bool {
+    let r = r.capped(entry.ceiling());
+    if let Some(reason) = r.unresolved() {
+        record.unresolved_reason = Some(reason.as_str().into());
+        return false;
+    }
+    record.terminal_authority = Some(checksum(r.terminal.address));
+    record.terminal_chain = Some(r.terminal.chain.as_str().into());
+    record.authority_kind = Some(r.kind.as_str().into());
+    record.compromise_depth = r.compromise_depth.map(i64::from);
+    record.timelock_seconds = Some(r.timelock_seconds as i64);
+    record.resolution_confidence = Some(r.confidence.as_str().into());
+    record.upgrade_path = Some(entry.as_str().into());
+    record.depth_unknown_reason = r.depth_gap().map(|gap| gap.as_str().into());
+    true
 }

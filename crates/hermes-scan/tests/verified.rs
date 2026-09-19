@@ -126,6 +126,18 @@ fn the_table_is_curated_by_shape() {
         &|r| e(r).kind == "transparent" && e(r).terminal_authority.is_none(),
         "an admin whose answer is honestly unknown",
     );
+    expect(
+        &|r| e(r).upgrade_path.as_deref() == Some("uups_owner"),
+        "a UUPS proxy resolved through owner()",
+    );
+    expect(
+        &|r| e(r).upgrade_path.as_deref() == Some("beacon"),
+        "a proxy resolved through its beacon",
+    );
+    expect(
+        &|r| e(r).unresolved_reason.as_deref() == Some("uups_unconfirmed"),
+        "an implementation that denies being UUPS",
+    );
     let names: std::collections::HashSet<_> = rows.iter().map(|r| &r.name).collect();
     assert_eq!(names.len(), rows.len(), "fixture names must be unique");
 }

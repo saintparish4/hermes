@@ -28,6 +28,9 @@ pub struct ProxyRecord {
     /// groups on, so it is what makes two proxies under different ProxyAdmins owned by one
     /// Safe count as a single authority.
     pub terminal_authority: Option<String>,
+    /// `base` or `ethereum`. The root of a Base proxy can be a Safe on Ethereum, acting
+    /// through its L1→L2 alias, and an address alone would make it look like a Base contract.
+    pub terminal_chain: Option<String>,
     pub authority_kind: Option<String>,
     /// Null when the chain could not be resolved. Never zero — that would read as free.
     pub compromise_depth: Option<i64>,
@@ -39,6 +42,7 @@ pub struct ProxyRecord {
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthorityRow {
     pub address: String,
+    pub chain: Option<String>,
     pub proxy_count: i64,
     pub kind: Option<String>,
     /// Null when the chain could not be resolved. Never rendered as zero.
@@ -71,6 +75,7 @@ CREATE TABLE IF NOT EXISTS proxy (
     code_size   INTEGER NOT NULL DEFAULT 0,
     scanned_at  INTEGER NOT NULL,
     terminal_authority     TEXT,
+    terminal_chain         TEXT,
     authority_kind         TEXT,
     compromise_depth       INTEGER,
     timelock_seconds       INTEGER,
@@ -92,18 +97,62 @@ const LATE_INDEXES: &str = r#"
 CREATE INDEX IF NOT EXISTS idx_proxy_terminal ON proxy(terminal_authority);
 "#;
 
-/// Columns added after the first deployment, as the statements that add them.
+/// A column added after the first deployment, and what has to happen to existing rows when
+/// it arrives.
+struct AddedColumn {
+    alter: &'static str,
+    /// Runs only in the process whose `ALTER` actually added the column, so it happens once
+    /// per database rather than on every boot.
+    on_add: Option<&'static str>,
+}
+
+const fn column(alter: &'static str) -> AddedColumn {
+    AddedColumn {
+        alter,
+        on_add: None,
+    }
+}
+
+/// Columns added after the first deployment, in the order they were added.
 ///
 /// SQLite has no `ADD COLUMN IF NOT EXISTS`, and there is a populated database on a mounted
 /// volume, so existing rows have to survive this rather than be recreated. Statements are
 /// static so no SQL is ever assembled at runtime.
-const ADDED_COLUMNS: &[&str] = &[
-    "ALTER TABLE proxy ADD COLUMN terminal_authority TEXT",
-    "ALTER TABLE proxy ADD COLUMN authority_kind TEXT",
-    "ALTER TABLE proxy ADD COLUMN compromise_depth INTEGER",
-    "ALTER TABLE proxy ADD COLUMN timelock_seconds INTEGER",
-    "ALTER TABLE proxy ADD COLUMN resolution_confidence TEXT",
+const ADDED_COLUMNS: &[AddedColumn] = &[
+    column("ALTER TABLE proxy ADD COLUMN terminal_authority TEXT"),
+    column("ALTER TABLE proxy ADD COLUMN authority_kind TEXT"),
+    column("ALTER TABLE proxy ADD COLUMN compromise_depth INTEGER"),
+    column("ALTER TABLE proxy ADD COLUMN timelock_seconds INTEGER"),
+    column("ALTER TABLE proxy ADD COLUMN resolution_confidence TEXT"),
+    AddedColumn {
+        alter: "ALTER TABLE proxy ADD COLUMN terminal_chain TEXT",
+        // Every resolution stored before this column existed was made by a resolver that read
+        // "no code on Base" as "one key", without asking L1 whether a contract stood behind the
+        // alias. That is how a 2-of-2 Safe eleven keys deep was published as a single EOA.
+        // None of those answers is one I stand behind any more, so they are retracted rather
+        // than left to be served until the next scan happens to overwrite them.
+        on_add: Some(
+            "UPDATE proxy SET terminal_authority = NULL, authority_kind = NULL, \
+             compromise_depth = NULL, timelock_seconds = NULL, resolution_confidence = NULL",
+        ),
+    },
 ];
+
+/// Every column `row_to_record` reads, named rather than `*`.
+///
+/// `SELECT *` broke under a schema change. A pooled connection holding a cached schema from
+/// before an `ALTER TABLE` prepares `*` as the old column list, SQLite silently re-prepares it
+/// with the new one when it runs, and sqlx indexes the extra column against metadata it cached
+/// at prepare time: "index out of bounds: the len is 13 but the index is 13", as a panic in the
+/// driver's worker thread. Naming the columns makes a stale schema a prepare-time miss, which
+/// SQLite answers by re-reading the schema instead of by widening the row underneath me.
+macro_rules! proxy_columns {
+    () => {
+        "address, label, kind, impl_addr, admin_addr, beacon_addr, code_size, scanned_at, \
+         terminal_authority, terminal_chain, authority_kind, compromise_depth, \
+         timelock_seconds, resolution_confidence"
+    };
+}
 
 #[derive(Clone)]
 pub struct Store {
@@ -152,8 +201,9 @@ impl Store {
         for r in records {
             let res = sqlx::query(
                 r#"INSERT INTO proxy (address,label,kind,impl_addr,admin_addr,beacon_addr,code_size,scanned_at,
-                                      terminal_authority,authority_kind,compromise_depth,timelock_seconds,resolution_confidence)
-                   VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+                                      terminal_authority,terminal_chain,authority_kind,compromise_depth,
+                                      timelock_seconds,resolution_confidence)
+                   VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
                    ON CONFLICT(address) DO UPDATE SET
                      label=COALESCE(excluded.label, proxy.label),
                      kind=excluded.kind,
@@ -163,19 +213,29 @@ impl Store {
                      code_size=excluded.code_size,
                      scanned_at=excluded.scanned_at,
                      -- Resolution runs after classification and can be absent on a run that
-                     -- only re-classified. COALESCE keeps the last known answer rather than
-                     -- blanking a resolved authority back to unresolved.
-                     terminal_authority=COALESCE(excluded.terminal_authority, proxy.terminal_authority),
-                     authority_kind=COALESCE(excluded.authority_kind, proxy.authority_kind),
-                     compromise_depth=COALESCE(excluded.compromise_depth, proxy.compromise_depth),
-                     timelock_seconds=COALESCE(excluded.timelock_seconds, proxy.timelock_seconds),
-                     resolution_confidence=COALESCE(excluded.resolution_confidence, proxy.resolution_confidence)
+                     -- only re-classified, so an incoming row with no root keeps the last known
+                     -- answer rather than blanking it. The columns move as one unit, though.
+                     -- COALESCE per column would let a new answer with an unknown key count
+                     -- inherit the old answer's number: a root that re-resolved from one EOA to
+                     -- a Safe of unknown depth would go on reporting "1".
+                     terminal_authority=CASE WHEN excluded.terminal_authority IS NULL
+                       THEN proxy.terminal_authority ELSE excluded.terminal_authority END,
+                     terminal_chain=CASE WHEN excluded.terminal_authority IS NULL
+                       THEN proxy.terminal_chain ELSE excluded.terminal_chain END,
+                     authority_kind=CASE WHEN excluded.terminal_authority IS NULL
+                       THEN proxy.authority_kind ELSE excluded.authority_kind END,
+                     compromise_depth=CASE WHEN excluded.terminal_authority IS NULL
+                       THEN proxy.compromise_depth ELSE excluded.compromise_depth END,
+                     timelock_seconds=CASE WHEN excluded.terminal_authority IS NULL
+                       THEN proxy.timelock_seconds ELSE excluded.timelock_seconds END,
+                     resolution_confidence=CASE WHEN excluded.terminal_authority IS NULL
+                       THEN proxy.resolution_confidence ELSE excluded.resolution_confidence END
                    WHERE NOT (proxy.code_size > 0 AND excluded.code_size = 0)"#,
             )
             .bind(&r.address).bind(&r.label).bind(&r.kind)
             .bind(&r.implementation).bind(&r.admin).bind(&r.beacon)
             .bind(r.code_size).bind(r.scanned_at)
-            .bind(&r.terminal_authority).bind(&r.authority_kind)
+            .bind(&r.terminal_authority).bind(&r.terminal_chain).bind(&r.authority_kind)
             .bind(r.compromise_depth).bind(r.timelock_seconds).bind(&r.resolution_confidence)
             .execute(&mut *tx).await?;
             n += res.rows_affected();
@@ -187,20 +247,33 @@ impl Store {
     /// Proxies only (covered patterns), most recently scanned first.
     pub async fn list_proxies(&self, only_covered: bool) -> anyhow::Result<Vec<ProxyRecord>> {
         let sql = if only_covered {
-            "SELECT * FROM proxy WHERE kind IN ('transparent','uups','beacon','eip1822','admin_only') \
+            concat!(
+                "SELECT ",
+                proxy_columns!(),
+                " FROM proxy \
+             WHERE kind IN ('transparent','uups','beacon','eip1822','admin_only') \
              ORDER BY code_size DESC"
+            )
         } else {
-            "SELECT * FROM proxy ORDER BY code_size DESC"
+            concat!(
+                "SELECT ",
+                proxy_columns!(),
+                " FROM proxy ORDER BY code_size DESC"
+            )
         };
         let rows = sqlx::query(sql).fetch_all(&self.pool).await?;
         Ok(rows.iter().map(row_to_record).collect())
     }
 
     pub async fn get_proxy(&self, address: &str) -> anyhow::Result<Option<ProxyRecord>> {
-        let row = sqlx::query("SELECT * FROM proxy WHERE address = ?1 COLLATE NOCASE")
-            .bind(address)
-            .fetch_optional(&self.pool)
-            .await?;
+        let row = sqlx::query(concat!(
+            "SELECT ",
+            proxy_columns!(),
+            " FROM proxy WHERE address = ?1 COLLATE NOCASE"
+        ))
+        .bind(address)
+        .fetch_optional(&self.pool)
+        .await?;
         Ok(row.as_ref().map(row_to_record))
     }
 
@@ -222,19 +295,20 @@ impl Store {
 
     /// Groups by the resolved root. Two proxies under different ProxyAdmin contracts owned by
     /// one Safe collapse to a single row here, which is the entire point of resolving at all.
+    /// The chain is part of the key: the same address on Base and on Ethereum is two accounts.
     ///
     /// Unresolved proxies are excluded rather than bucketed under a placeholder — they are
     /// reported by `coverage` instead, so they stay visible without being counted as an
     /// authority I understand.
     pub async fn authority_rollup(&self) -> anyhow::Result<Vec<AuthorityRow>> {
         let rows = sqlx::query(
-            "SELECT terminal_authority a, COUNT(*) c, \
+            "SELECT terminal_authority a, terminal_chain ch, COUNT(*) c, \
                     MAX(authority_kind) k, \
                     MAX(compromise_depth) d, \
                     MAX(timelock_seconds) t, \
                     MIN(resolution_confidence) conf \
              FROM proxy WHERE terminal_authority IS NOT NULL \
-             GROUP BY terminal_authority ORDER BY c DESC, a ASC",
+             GROUP BY terminal_authority, terminal_chain ORDER BY c DESC, a ASC",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -242,6 +316,7 @@ impl Store {
             .iter()
             .map(|r| AuthorityRow {
                 address: r.get("a"),
+                chain: r.get("ch"),
                 proxy_count: r.get("c"),
                 kind: r.get("k"),
                 compromise_depth: r.get("d"),
@@ -251,12 +326,20 @@ impl Store {
             .collect())
     }
 
-    /// Every proxy that resolves to one authority.
-    pub async fn proxies_for_authority(&self, authority: &str) -> anyhow::Result<Vec<ProxyRecord>> {
-        let rows = sqlx::query(
-            "SELECT * FROM proxy WHERE terminal_authority = ?1 COLLATE NOCASE ORDER BY code_size DESC",
-        )
+    /// Every proxy that resolves to one authority, optionally only on one chain.
+    pub async fn proxies_for_authority(
+        &self,
+        authority: &str,
+        chain: Option<&str>,
+    ) -> anyhow::Result<Vec<ProxyRecord>> {
+        let rows = sqlx::query(concat!(
+            "SELECT ",
+            proxy_columns!(),
+            " FROM proxy WHERE terminal_authority = ?1 COLLATE NOCASE \
+             AND (?2 IS NULL OR terminal_chain = ?2) ORDER BY code_size DESC"
+        ))
         .bind(authority)
+        .bind(chain)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.iter().map(row_to_record).collect())
@@ -283,7 +366,8 @@ impl Store {
         let row = sqlx::query(
             "SELECT COUNT(*) total, COUNT(DISTINCT admin_addr) admins, MAX(scanned_at) last, \
                     COUNT(terminal_authority) resolved, \
-                    COUNT(DISTINCT terminal_authority) authorities FROM proxy",
+                    COUNT(DISTINCT COALESCE(terminal_chain, '') || ':' || terminal_authority) authorities \
+             FROM proxy",
         )
         .fetch_one(&self.pool)
         .await?;
@@ -310,6 +394,7 @@ fn row_to_record(r: &sqlx::sqlite::SqliteRow) -> ProxyRecord {
         code_size: r.get("code_size"),
         scanned_at: r.get("scanned_at"),
         terminal_authority: r.get("terminal_authority"),
+        terminal_chain: r.get("terminal_chain"),
         authority_kind: r.get("authority_kind"),
         compromise_depth: r.get("compromise_depth"),
         timelock_seconds: r.get("timelock_seconds"),
@@ -325,9 +410,13 @@ fn row_to_record(r: &sqlx::sqlite::SqliteRow) -> ProxyRecord {
 /// on `duplicate column name`. Treating that specific error as success makes the migration
 /// idempotent by construction instead of by timing.
 async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
-    for statement in ADDED_COLUMNS {
-        match sqlx::raw_sql(*statement).execute(pool).await {
-            Ok(_) => {}
+    for added in ADDED_COLUMNS {
+        match sqlx::raw_sql(added.alter).execute(pool).await {
+            Ok(_) => {
+                if let Some(statement) = added.on_add {
+                    sqlx::raw_sql(statement).execute(pool).await?;
+                }
+            }
             Err(e) if is_duplicate_column(&e) => {}
             Err(e) => return Err(e.into()),
         }
@@ -477,6 +566,7 @@ mod tests {
     fn resolved(addr: &str, authority: &str, depth: Option<i64>) -> ProxyRecord {
         ProxyRecord {
             terminal_authority: Some(authority.into()),
+            terminal_chain: Some("base".into()),
             authority_kind: Some("safe".into()),
             compromise_depth: depth,
             timelock_seconds: Some(0),
@@ -557,6 +647,128 @@ mod tests {
         assert_eq!(p.compromise_depth, Some(3));
     }
 
+    /// The failure this guards: the predeploy root re-resolving from "one EOA, 1 key" to "a Safe
+    /// on Ethereum" while the old key count survives underneath the new answer. A new root has
+    /// to bring its own depth, even when that depth is unknown.
+    #[tokio::test]
+    async fn a_new_resolution_replaces_every_resolution_column_together() {
+        let s = mem().await;
+        let mut before = resolved("0xA", "0xAlias", Some(1));
+        before.authority_kind = Some("eoa".into());
+        s.upsert_many(&[before]).await.unwrap();
+
+        let mut after = resolved("0xA", "0xL1Safe", None);
+        after.terminal_chain = Some("ethereum".into());
+        after.resolution_confidence = Some("medium".into());
+        s.upsert_many(&[after]).await.unwrap();
+
+        let p = s.get_proxy("0xA").await.unwrap().unwrap();
+        assert_eq!(p.terminal_authority.as_deref(), Some("0xL1Safe"));
+        assert_eq!(p.terminal_chain.as_deref(), Some("ethereum"));
+        assert_eq!(p.authority_kind.as_deref(), Some("safe"));
+        assert_eq!(
+            p.compromise_depth, None,
+            "the old root's key count must not outlive it"
+        );
+        assert_eq!(p.resolution_confidence.as_deref(), Some("medium"));
+    }
+
+    /// The same 20 bytes on Base and on Ethereum are two accounts, so they are two rows.
+    #[tokio::test]
+    async fn the_same_address_on_two_chains_is_two_authorities() {
+        let s = mem().await;
+        let on_base = resolved("0xA", "0xSame", Some(1));
+        let mut on_ethereum = resolved("0xB", "0xSame", Some(2));
+        on_ethereum.terminal_chain = Some("ethereum".into());
+        s.upsert_many(&[on_base, on_ethereum]).await.unwrap();
+
+        assert_eq!(s.authority_rollup().await.unwrap().len(), 2);
+        assert_eq!(s.coverage().await.unwrap().distinct_authorities, 2);
+        assert_eq!(
+            s.proxies_for_authority("0xSame", Some("ethereum"))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            s.proxies_for_authority("0xSame", None).await.unwrap().len(),
+            2
+        );
+    }
+
+    /// Opening the database the live deployment has: resolution columns present, no
+    /// `terminal_chain`, and an "EOA" that was never checked against L1. That answer must not
+    /// survive the upgrade, and the retraction must happen once, not on every boot.
+    #[tokio::test]
+    async fn resolutions_stored_before_aliasing_was_modelled_are_retracted_once() {
+        let path = std::env::temp_dir().join(format!("hermes-prealias-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let url = format!("sqlite://{}", path.display());
+
+        let old = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::from_str(&url)
+                    .unwrap()
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE proxy (
+                address TEXT PRIMARY KEY NOT NULL, label TEXT, kind TEXT NOT NULL,
+                impl_addr TEXT, admin_addr TEXT, beacon_addr TEXT,
+                code_size INTEGER NOT NULL DEFAULT 0, scanned_at INTEGER NOT NULL,
+                terminal_authority TEXT, authority_kind TEXT, compromise_depth INTEGER,
+                timelock_seconds INTEGER, resolution_confidence TEXT);
+             INSERT INTO proxy VALUES ('0xPredeploy','L1Block','transparent',NULL,
+                '0x4200000000000000000000000000000000000018',NULL,100,1700000000,
+                '0x8cC51c3008b3f03Fe483B28B8Db90e19cF076a6d','eoa',1,0,'high');",
+        )
+        .execute(&old)
+        .await
+        .unwrap();
+        old.close().await;
+
+        let store = Store::open(&url).await.unwrap();
+        let p = store.get_proxy("0xPredeploy").await.unwrap().unwrap();
+        assert_eq!(
+            p.terminal_authority, None,
+            "an unchecked EOA verdict is retracted"
+        );
+        assert_eq!(p.compromise_depth, None);
+        assert_eq!(
+            p.label.as_deref(),
+            Some("L1Block"),
+            "the proxy itself survives"
+        );
+        assert_eq!(store.authority_rollup().await.unwrap().len(), 0);
+
+        store
+            .upsert_many(&[ProxyRecord {
+                terminal_authority: Some("0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c".into()),
+                terminal_chain: Some("ethereum".into()),
+                authority_kind: Some("safe".into()),
+                compromise_depth: Some(11),
+                timelock_seconds: Some(0),
+                resolution_confidence: Some("high".into()),
+                ..p
+            }])
+            .await
+            .unwrap();
+        drop(store);
+
+        let reopened = Store::open(&url).await.unwrap();
+        let p = reopened.get_proxy("0xPredeploy").await.unwrap().unwrap();
+        assert_eq!(
+            p.compromise_depth,
+            Some(11),
+            "a resolution made after the upgrade must survive the next boot"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[tokio::test]
     async fn proxies_for_authority_returns_only_that_authoritys_proxies() {
         let s = mem().await;
@@ -567,10 +779,19 @@ mod tests {
         ])
         .await
         .unwrap();
-        assert_eq!(s.proxies_for_authority("0xSafe").await.unwrap().len(), 2);
-        assert_eq!(s.proxies_for_authority("0xOther").await.unwrap().len(), 1);
+        assert_eq!(
+            s.proxies_for_authority("0xSafe", None).await.unwrap().len(),
+            2
+        );
+        assert_eq!(
+            s.proxies_for_authority("0xOther", None)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
         assert!(
-            s.proxies_for_authority("0xNobody")
+            s.proxies_for_authority("0xNobody", None)
                 .await
                 .unwrap()
                 .is_empty()

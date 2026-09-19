@@ -42,6 +42,12 @@ pub struct ProxyQuery {
     pub all: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AuthorityQuery {
+    /// `base` or `ethereum`. Only needed when one address is an authority on both.
+    pub chain: Option<String>,
+}
+
 #[derive(Serialize)]
 struct ProxyList {
     count: usize,
@@ -110,23 +116,48 @@ async fn list_authorities(State(store): State<Store>) -> ApiResult<Json<Authorit
     }))
 }
 
+/// One authority and every proxy it controls.
+///
+/// The same address can be a root on Base and on Ethereum, and those are two authorities. When
+/// that happens and no `?chain=` says which, the answer is a 409 naming both rather than
+/// whichever row happened to sort first.
 async fn get_authority(
     State(store): State<Store>,
     Path(address): Path<String>,
+    Query(q): Query<AuthorityQuery>,
 ) -> ApiResult<Response> {
-    let proxies = store.proxies_for_authority(&address).await?;
-    let Some(authority) = store
+    let mut matches: Vec<_> = store
         .authority_rollup()
         .await?
         .into_iter()
-        .find(|a| a.address.eq_ignore_ascii_case(&address))
-    else {
-        return Ok((
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "unknown authority", "address": address })),
-        )
-            .into_response());
+        .filter(|a| a.address.eq_ignore_ascii_case(&address))
+        .filter(|a| q.chain.is_none() || a.chain == q.chain)
+        .collect();
+    let authority = match matches.len() {
+        0 => {
+            return Ok((
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({ "error": "unknown authority", "address": address })),
+            )
+                .into_response());
+        }
+        1 => matches.remove(0),
+        _ => {
+            let chains: Vec<_> = matches.iter().map(|a| a.chain.clone()).collect();
+            return Ok((
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "address is an authority on more than one chain; pass ?chain=",
+                    "address": address,
+                    "chains": chains,
+                })),
+            )
+                .into_response());
+        }
     };
+    let proxies = store
+        .proxies_for_authority(&address, authority.chain.as_deref())
+        .await?;
     Ok(Json(AuthorityDetail { authority, proxies }).into_response())
 }
 
@@ -171,6 +202,7 @@ mod tests {
                     code_size: 1971,
                     scanned_at: 1_700_000_000,
                     terminal_authority: Some("0xSafe".into()),
+                    terminal_chain: Some("base".into()),
                     authority_kind: Some("safe".into()),
                     compromise_depth: Some(2),
                     timelock_seconds: Some(0),
@@ -186,6 +218,7 @@ mod tests {
                     code_size: 900,
                     scanned_at: 1_700_000_000,
                     terminal_authority: Some("0xSafe".into()),
+                    terminal_chain: Some("base".into()),
                     authority_kind: Some("safe".into()),
                     compromise_depth: Some(2),
                     timelock_seconds: Some(0),
@@ -325,6 +358,7 @@ mod tests {
         let v = body_json(r).await;
         assert_eq!(v["count"], 1);
         assert_eq!(v["authorities"][0]["address"], "0xSafe");
+        assert_eq!(v["authorities"][0]["chain"], "base");
         assert_eq!(v["authorities"][0]["proxy_count"], 2);
         assert_eq!(v["authorities"][0]["compromise_depth"], 2);
     }
@@ -396,6 +430,80 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::NOT_FOUND);
+    }
+
+    /// The corrected predeploy row: a Safe that lives on Ethereum must say so in the JSON, or a
+    /// reader will go looking for it on Basescan and find nothing.
+    #[tokio::test]
+    async fn an_authority_on_ethereum_says_so() {
+        let store = Store::open("sqlite::memory:").await.unwrap();
+        store
+            .upsert_many(&[hermes_core::ProxyRecord {
+                address: "0x4200000000000000000000000000000000000015".into(),
+                kind: "transparent".into(),
+                admin: Some("0x4200000000000000000000000000000000000018".into()),
+                code_size: 10,
+                scanned_at: 1,
+                terminal_authority: Some("0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c".into()),
+                terminal_chain: Some("ethereum".into()),
+                authority_kind: Some("safe".into()),
+                compromise_depth: Some(11),
+                timelock_seconds: Some(0),
+                resolution_confidence: Some("high".into()),
+                ..Default::default()
+            }])
+            .await
+            .unwrap();
+        let v = body_json(
+            router(store, PathBuf::from("static"))
+                .oneshot(
+                    Request::builder()
+                        .uri("/authorities")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(v["authorities"][0]["chain"], "ethereum");
+        assert_eq!(v["authorities"][0]["kind"], "safe");
+        assert_eq!(v["authorities"][0]["compromise_depth"], 11);
+    }
+
+    /// One address, a root on both chains: without `?chain=` there is no single right answer,
+    /// so the API names the ambiguity instead of picking.
+    #[tokio::test]
+    async fn an_address_that_is_an_authority_on_two_chains_needs_a_chain() {
+        let store = Store::open("sqlite::memory:").await.unwrap();
+        let row = |address: &str, chain: &str| hermes_core::ProxyRecord {
+            address: address.into(),
+            kind: "transparent".into(),
+            code_size: 10,
+            scanned_at: 1,
+            terminal_authority: Some("0xSame".into()),
+            terminal_chain: Some(chain.into()),
+            authority_kind: Some("safe".into()),
+            ..Default::default()
+        };
+        store
+            .upsert_many(&[row("0xA", "base"), row("0xB", "ethereum")])
+            .await
+            .unwrap();
+        let app = router(store, PathBuf::from("static"));
+        let get = |uri: &'static str| {
+            app.clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        };
+        assert_eq!(
+            get("/authorities/0xSame").await.unwrap().status(),
+            StatusCode::CONFLICT
+        );
+        let r = get("/authorities/0xSame?chain=ethereum").await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let v = body_json(r).await;
+        assert_eq!(v["authority"]["chain"], "ethereum");
+        assert_eq!(v["proxies"].as_array().unwrap().len(), 1);
     }
 
     #[tokio::test]

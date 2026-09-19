@@ -52,8 +52,10 @@
   <h1>Hermes — Base proxy scan</h1>
   <p class="sub">
     Every address below was probed directly for its ERC-1967 / EIP-1822 storage slots on Base
-    mainnet. Right now this reports each proxy's <em>immediate</em> admin. It does not yet
-    resolve that admin to a terminal authority, and it does not price anything.
+    mainnet, and each admin was followed to the root that actually controls it: a key, a Safe,
+    or a contract on Ethereum acting through its L1→L2 alias. <em>Keys</em> is the fewest keys
+    that would have to be compromised; "unknown" means the chain was not fully identified, not
+    that it is safe. Nothing here is priced yet.
   </p>
 
   <div class="stats" id="stats"></div>
@@ -72,6 +74,8 @@
         <th data-k="kind">Kind</th>
         <th data-k="implementation">Implementation</th>
         <th data-k="admin">Admin</th>
+        <th data-k="terminal_authority">Root authority</th>
+        <th data-k="compromise_depth">Keys</th>
         <th data-k="code_size">Code</th>
       </tr></thead>
       <tbody id="rows"></tbody>
@@ -92,6 +96,14 @@
 <script>
 const short = a => a ? a.slice(0,10) + '…' + a.slice(-6) : '—';
 const bs = a => `https://basescan.org/address/${a}`;
+const explorer = (a, chain) => chain === 'ethereum' ? `https://etherscan.io/address/${a}` : bs(a);
+const root = r => r.terminal_authority
+  ? `<a href="${explorer(r.terminal_authority, r.terminal_chain)}" target="_blank" rel="noopener">${short(r.terminal_authority)}</a>
+     <span class="tag">${r.authority_kind ?? '?'}${r.terminal_chain === 'ethereum' ? ' · ethereum' : ''}</span>`
+  : '<span class="mono">unresolved</span>';
+const keys = r => r.terminal_authority
+  ? (r.compromise_depth ?? '<span class="mono">unknown</span>')
+  : '<span class="mono">—</span>';
 let data = [], sortKey = 'code_size', sortDir = -1;
 
 async function load(){
@@ -106,7 +118,7 @@ async function load(){
     renderStats(c);
     render();
   }catch(e){
-    rows.innerHTML = `<tr><td colspan="6"><div class="err">Could not reach the API: ${e}</div></td></tr>`;
+    rows.innerHTML = `<tr><td colspan="8"><div class="err">Could not reach the API: ${e}</div></td></tr>`;
   }
 }
 
@@ -118,13 +130,15 @@ function renderStats(c){
     <div class="stat"><b>${c.covered_proxies}</b><span>covered proxies</span></div>
     <div class="stat"><b>${pct}%</b><span>of scanned</span></div>
     <div class="stat"><b>${c.distinct_admins}</b><span>distinct admins</span></div>
+    <div class="stat"><b>${c.resolved_proxies}/${c.covered_proxies}</b><span>resolved to a root</span></div>
+    <div class="stat"><b>${c.distinct_authorities}</b><span>distinct roots</span></div>
     <div class="stat"><b>${when}</b><span>last scan (utc)</span></div>`;
 }
 
 function render(){
   const q = document.getElementById('q').value.trim().toLowerCase();
   const rows = data.filter(r => !q ||
-    [r.address, r.label, r.admin, r.implementation, r.kind]
+    [r.address, r.label, r.admin, r.implementation, r.kind, r.terminal_authority]
       .some(v => v && v.toLowerCase().includes(q)));
   rows.sort((a,b) => {
     const x = a[sortKey] ?? '', y = b[sortKey] ?? '';
@@ -138,6 +152,8 @@ function render(){
       <td><span class="tag ${r.kind}">${r.kind}</span></td>
       <td class="mono">${r.implementation ? `<a href="${bs(r.implementation)}" target="_blank" rel="noopener">${short(r.implementation)}</a>` : '—'}</td>
       <td class="mono">${r.admin ? `<a href="${bs(r.admin)}" target="_blank" rel="noopener">${short(r.admin)}</a>` : '—'}</td>
+      <td>${root(r)}</td>
+      <td>${keys(r)}</td>
       <td class="mono">${r.code_size.toLocaleString()}</td>
     </tr>`).join('');
 }

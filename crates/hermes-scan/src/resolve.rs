@@ -7,13 +7,21 @@
 //! Collection is breadth-first by design. Walking depth-first would interleave network round
 //! trips with graph decisions and make the whole thing untestable; gathering a level at a
 //! time keeps all the I/O here and leaves the graph logic pure.
+//!
+//! Two chains are read. Base is where the proxies live, and Ethereum is where a codeless Base
+//! authority may really live: an L1 contract acts on L2 through an aliased address that has no
+//! code of its own, so "no code on Base" is a question for L1 before it is an answer.
 
 use alloy::primitives::{Address, B256, Bytes, U256, keccak256};
 use alloy::providers::{DynProvider, Provider};
 use alloy::rpc::types::TransactionRequest;
 use futures::stream::{self, StreamExt};
-use hermes_core::{AuthorityProbe, MAX_DEPTH};
+use hermes_core::{AuthorityProbe, Chain, Code, MAX_DEPTH, Node, edges, undo_l1_to_l2_alias};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 /// The most owners I will read off one contract.
 ///
@@ -64,6 +72,9 @@ fn decode_address_array(data: &[u8]) -> Option<Vec<Address>> {
 /// How many times to re-ask before accepting that I will not find out.
 const RETRIES: u32 = 5;
 
+/// How long to wait before re-reading an empty code answer, matching the slot scan.
+const CONFIRM_DELAY: Duration = Duration::from_millis(150);
+
 /// What one `eth_call` established.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CallOutcome {
@@ -93,23 +104,85 @@ async fn backoff(attempt: u32) {
     tokio::time::sleep(std::time::Duration::from_millis(400u64 << attempt.min(6))).await;
 }
 
+fn note_retry(node: Node, what: &str, attempt: u32, error: &dyn std::fmt::Display) {
+    tracing::debug!(?node, what, attempt, %error, "read failed, backing off");
+}
+
+fn note_undetermined(node: Node, what: &str) {
+    tracing::warn!(?node, what, "undetermined after retries");
+}
+
 /// Distinguish a contract saying "no such function" from the node saying nothing useful.
 fn is_revert(error: &str) -> bool {
     let e = error.to_ascii_lowercase();
     e.contains("execution reverted") || e.contains("invalid opcode") || e.contains("out of gas")
 }
 
+/// What a Base address with no code is, given what L1 said about its unaliased address.
+///
+/// `None` when L1 would not answer. That is the honest outcome and the whole reason this is a
+/// function: an unread L1 must never fall through to "a key", because "a key" is the most
+/// alarming verdict available and it would be stated about an address I learned nothing about.
+fn codeless_on_base(l1: Address, l1_code_is_empty: Option<bool>) -> Option<Code> {
+    Some(if l1_code_is_empty? {
+        Code::Absent
+    } else {
+        Code::L1Alias(l1)
+    })
+}
+
+/// One chain's connection, and how far apart requests to it have to be.
+///
+/// Measured on `mainnet.base.org`, 2026-09-19: about ten back-to-back `eth_call`s succeed, then
+/// the endpoint answers HTTP 429 until it has seen roughly seven seconds of quiet. Retries fired
+/// into that window extend it, so a resolver calling as fast as it can loses whole nodes to
+/// `Undetermined`, and which nodes it loses changes from run to run. One call every 800ms went
+/// 30 for 30. Spacing requests is what makes coverage stable; retrying harder does not.
+#[derive(Clone)]
+pub struct Endpoint {
+    provider: DynProvider,
+    interval: Duration,
+    next_slot: Arc<Mutex<Instant>>,
+}
+
+impl Endpoint {
+    pub fn new(provider: DynProvider, interval: Duration) -> Self {
+        Self {
+            provider,
+            interval,
+            next_slot: Arc::new(Mutex::new(Instant::now())),
+        }
+    }
+
+    /// The provider, once this endpoint's turn has come round.
+    async fn paced(&self) -> &DynProvider {
+        let mut next = self.next_slot.lock().await;
+        tokio::time::sleep_until(*next).await;
+        *next = Instant::now() + self.interval;
+        &self.provider
+    }
+}
+
 #[derive(Clone)]
 pub struct AuthorityScanner {
-    provider: DynProvider,
+    base: Endpoint,
+    ethereum: Endpoint,
     concurrency: usize,
 }
 
 impl AuthorityScanner {
-    pub fn new(provider: DynProvider, concurrency: usize) -> Self {
+    pub fn new(base: Endpoint, ethereum: Endpoint, concurrency: usize) -> Self {
         Self {
-            provider,
+            base,
+            ethereum,
             concurrency,
+        }
+    }
+
+    async fn provider(&self, chain: Chain) -> &DynProvider {
+        match chain {
+            Chain::Base => self.base.paced().await,
+            Chain::Ethereum => self.ethereum.paced().await,
         }
     }
 
@@ -118,12 +191,12 @@ impl AuthorityScanner {
     /// The three outcomes must stay distinct. Collapsing `Undetermined` into "no answer" is
     /// how a rate-limited `getOwners()` turns a Safe into an `Ownable` — the threshold
     /// vanishes, the owner set vanishes, and the key count silently drops to one.
-    async fn call(&self, to: Address, sel: [u8; 4]) -> CallOutcome {
+    async fn call(&self, node: Node, sel: [u8; 4]) -> CallOutcome {
         let tx = TransactionRequest::default()
-            .to(to)
+            .to(node.address)
             .input(Bytes::from(sel.to_vec()).into());
         for attempt in 0..RETRIES {
-            match self.provider.call(tx.clone()).await {
+            match self.provider(node.chain).await.call(tx.clone()).await {
                 Ok(out) if !out.is_empty() => return CallOutcome::Answered(out),
                 // An empty return is a contract answering without saying anything, which is
                 // not the interface I asked about. Retrying that learns nothing.
@@ -132,10 +205,33 @@ impl AuthorityScanner {
                 // else is the node failing, and confusing the two is what fabricates a
                 // governance structure out of an outage.
                 Err(e) if is_revert(&e.to_string()) => return CallOutcome::NoAnswer,
-                Err(_) => backoff(attempt).await,
+                Err(e) => {
+                    note_retry(node, "eth_call", attempt, &e);
+                    backoff(attempt).await;
+                }
             }
         }
+        note_undetermined(node, "eth_call");
         CallOutcome::Undetermined
+    }
+
+    async fn read_code_is_empty(&self, node: Node) -> Option<bool> {
+        for attempt in 0..RETRIES {
+            match self
+                .provider(node.chain)
+                .await
+                .get_code_at(node.address)
+                .await
+            {
+                Ok(code) => return Some(code.is_empty()),
+                Err(e) => {
+                    note_retry(node, "eth_getCode", attempt, &e);
+                    backoff(attempt).await;
+                }
+            }
+        }
+        note_undetermined(node, "eth_getCode");
+        None
     }
 
     /// Whether an address has no code, or `None` when the node would not tell me.
@@ -144,14 +240,31 @@ impl AuthorityScanner {
     /// classify the address as an EOA — a *terminal* answer costing exactly one key. A rate
     /// limit would silently become the most alarming possible verdict, stated with High
     /// confidence, on an address I learned nothing about.
-    async fn code_is_empty(&self, addr: Address) -> Option<bool> {
-        for attempt in 0..RETRIES {
-            if let Ok(code) = self.provider.get_code_at(addr).await {
-                return Some(code.is_empty());
-            }
-            backoff(attempt).await;
+    ///
+    /// For the same reason an empty answer is read twice before I believe it, the rule the
+    /// slot scan already follows: the public Base endpoint returns `0x` for contracts that
+    /// have code often enough under load that one sighting of nothing proves nothing.
+    async fn code_is_empty(&self, node: Node) -> Option<bool> {
+        if !self.read_code_is_empty(node).await? {
+            return Some(false);
         }
-        None
+        tokio::time::sleep(CONFIRM_DELAY).await;
+        self.read_code_is_empty(node).await
+    }
+
+    /// What an address is as far as code goes, on its own chain and, for a codeless Base
+    /// address, on Ethereum behind its alias.
+    async fn code(&self, node: Node) -> Option<Code> {
+        if !self.code_is_empty(node).await? {
+            return Some(Code::Present);
+        }
+        match node.chain {
+            Chain::Ethereum => Some(Code::Absent),
+            Chain::Base => {
+                let l1 = undo_l1_to_l2_alias(node.address);
+                codeless_on_base(l1, self.code_is_empty(Node::ethereum(l1)).await)
+            }
+        }
     }
 
     /// Ask one address every question I know how to ask.
@@ -163,22 +276,23 @@ impl AuthorityScanner {
     /// multiplies the caller's concurrency limit by five, and the public endpoint starts
     /// answering `over rate limit` — which arrives here as "this interface is absent" and
     /// turns a Safe into an unresolved shrug.
-    pub async fn probe(&self, addr: Address) -> Option<AuthorityProbe> {
-        if self.code_is_empty(addr).await? {
+    pub async fn probe(&self, node: Node) -> Option<AuthorityProbe> {
+        let code = self.code(node).await?;
+        if code != Code::Present {
             return Some(AuthorityProbe {
-                code_empty: true,
+                code,
                 ..Default::default()
             });
         }
-        let owners = self.call(addr, selector("getOwners()")).await.settled()?;
+        let owners = self.call(node, selector("getOwners()")).await.settled()?;
         let threshold = self
-            .call(addr, selector("getThreshold()"))
+            .call(node, selector("getThreshold()"))
             .await
             .settled()?;
-        let owner = self.call(addr, selector("owner()")).await.settled()?;
-        let min_delay = self.call(addr, selector("getMinDelay()")).await.settled()?;
+        let owner = self.call(node, selector("owner()")).await.settled()?;
+        let min_delay = self.call(node, selector("getMinDelay()")).await.settled()?;
         Some(AuthorityProbe {
-            code_empty: false,
+            code,
             owners: owners.and_then(|b| decode_address_array(&b)),
             // Saturating rather than truncating: a `u256 -> u32` cast that wraps turns
             // "needs four billion keys" into "needs three".
@@ -193,17 +307,21 @@ impl AuthorityScanner {
     }
 
     /// Gather every probe reachable from `roots` within the depth limit.
-    pub async fn collect(&self, roots: Vec<Address>) -> HashMap<Address, AuthorityProbe> {
-        let mut probes: HashMap<Address, AuthorityProbe> = HashMap::new();
-        let mut seen: HashSet<Address> = HashSet::new();
-        let mut frontier: Vec<Address> = roots.into_iter().filter(|a| seen.insert(*a)).collect();
+    ///
+    /// Levels `0..=MAX_DEPTH`, because that is how deep the key count reads: a Safe standing
+    /// at the last link still needs its owners probed to be counted. Stopping one level short
+    /// made every such Safe's key count unknown for want of a read, not for want of an answer.
+    pub async fn collect(&self, roots: Vec<Node>) -> HashMap<Node, AuthorityProbe> {
+        let mut probes: HashMap<Node, AuthorityProbe> = HashMap::new();
+        let mut seen: HashSet<Node> = HashSet::new();
+        let mut frontier: Vec<Node> = roots.into_iter().filter(|n| seen.insert(*n)).collect();
 
-        for _ in 0..MAX_DEPTH {
+        for _ in 0..=MAX_DEPTH {
             if frontier.is_empty() {
                 break;
             }
-            let level: Vec<(Address, AuthorityProbe)> = stream::iter(frontier.clone())
-                .map(|a| async move { self.probe(a).await.map(|p| (a, p)) })
+            let level: Vec<(Node, AuthorityProbe)> = stream::iter(frontier.clone())
+                .map(|n| async move { self.probe(n).await.map(|p| (n, p)) })
                 .buffer_unordered(self.concurrency)
                 .collect::<Vec<_>>()
                 .await
@@ -213,20 +331,13 @@ impl AuthorityScanner {
 
             frontier = level
                 .iter()
-                .flat_map(|(_, p)| children(p))
-                .filter(|a| seen.insert(*a))
+                .flat_map(|(n, p)| edges(*n, p))
+                .filter(|n| seen.insert(*n))
                 .collect();
             probes.extend(level);
         }
         probes
     }
-}
-
-/// Addresses worth probing next, given what one address answered.
-fn children(probe: &AuthorityProbe) -> Vec<Address> {
-    let mut out = probe.owners.clone().unwrap_or_default();
-    out.extend(probe.owner);
-    out
 }
 
 #[cfg(test)]
@@ -350,14 +461,18 @@ mod tests {
         assert!(!is_revert("504 Gateway Timeout"));
     }
 
+    /// The step-1 honesty rule, as a function: a codeless Base address whose L1 twin could
+    /// not be read is not a key.
     #[test]
-    fn children_are_the_owners_plus_the_owner() {
-        let p = AuthorityProbe {
-            owners: Some(vec![address!("00000000000000000000000000000000000000a1")]),
-            owner: Some(address!("00000000000000000000000000000000000000b2")),
-            ..Default::default()
-        };
-        assert_eq!(children(&p).len(), 2);
-        assert!(children(&AuthorityProbe::default()).is_empty());
+    fn an_unread_l1_leaves_a_codeless_base_address_undetermined() {
+        let l1 = address!("7bB41C3008B3f03FE483B28b8DB90e19Cf07595c");
+        assert_eq!(codeless_on_base(l1, None), None);
+    }
+
+    #[test]
+    fn a_codeless_base_address_is_a_key_only_when_l1_is_confirmed_empty_too() {
+        let l1 = address!("7bB41C3008B3f03FE483B28b8DB90e19Cf07595c");
+        assert_eq!(codeless_on_base(l1, Some(true)), Some(Code::Absent));
+        assert_eq!(codeless_on_base(l1, Some(false)), Some(Code::L1Alias(l1)));
     }
 }

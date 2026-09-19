@@ -7,11 +7,11 @@
 use alloy::primitives::Address;
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use hermes_core::{AuthorityKind, Confidence, ProxyRecord, Store, resolve, store::checksum};
-use hermes_scan::{AuthorityScanner, SEED, Scanner};
+use hermes_core::{Confidence, Node, ProxyRecord, Store, resolve, store::checksum};
+use hermes_scan::{AuthorityScanner, Endpoint, SEED, Scanner};
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Parser)]
 #[command(name = "hermes", version, about = "Base authority scanner")]
@@ -39,6 +39,17 @@ enum Command {
             default_value = "https://mainnet.base.org"
         )]
         rpc_url: String,
+        /// Ethereum mainnet, read only to learn what stands behind a codeless Base authority.
+        #[arg(
+            long,
+            env = "HERMES_L1_RPC_URL",
+            default_value = "https://eth.drpc.org"
+        )]
+        l1_rpc_url: String,
+        /// Minimum gap between resolution calls to the Base endpoint. The public endpoint
+        /// needs about a second; a keyed endpoint can take 0.
+        #[arg(long, env = "HERMES_CALL_INTERVAL_MS", default_value_t = 1000)]
+        call_interval_ms: u64,
         /// Concurrent in-flight readers. 3 is what the public Base endpoint tolerates.
         #[arg(long, env = "HERMES_CONCURRENCY", default_value_t = 3)]
         concurrency: usize,
@@ -55,33 +66,15 @@ enum Command {
     },
 }
 
-fn authority_kind_str(kind: AuthorityKind) -> &'static str {
-    match kind {
-        AuthorityKind::Eoa => "eoa",
-        AuthorityKind::Safe => "safe",
-        AuthorityKind::Ownable => "ownable",
-        AuthorityKind::Timelock => "timelock",
-        AuthorityKind::Unknown => "unknown",
-    }
-}
-
-fn confidence_str(confidence: Confidence) -> &'static str {
-    match confidence {
-        Confidence::High => "high",
-        Confidence::Medium => "medium",
-        Confidence::Unknown => "unknown",
-    }
-}
-
 /// Walk every distinct admin to its root and write the answer back onto each proxy.
 ///
 /// Done as a second pass rather than inline so the probe collection can be batched across
 /// every admin at once. Admins are shared heavily — one ProxyAdmin governs twenty contracts
 /// on Base — so resolving per proxy would re-walk the same subgraph twenty times.
 async fn resolve_authorities(scanner: &AuthorityScanner, records: &mut [ProxyRecord]) -> usize {
-    let admins: Vec<_> = records
+    let admins: Vec<Node> = records
         .iter()
-        .filter_map(|r| r.admin.as_ref()?.parse().ok())
+        .filter_map(|r| r.admin.as_ref()?.parse().ok().map(Node::base))
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
@@ -97,17 +90,18 @@ async fn resolve_authorities(scanner: &AuthorityScanner, records: &mut [ProxyRec
         let Some(admin) = record.admin.as_ref().and_then(|a| a.parse().ok()) else {
             continue;
         };
-        let r = resolve(admin, &probes);
+        let r = resolve(Node::base(admin), &probes);
         // An unresolved chain leaves the columns untouched, so the store keeps whatever it
         // already knew instead of being told the authority disappeared.
         if r.confidence == Confidence::Unknown {
             continue;
         }
-        record.terminal_authority = Some(checksum(r.terminal_authority));
-        record.authority_kind = Some(authority_kind_str(r.kind).into());
+        record.terminal_authority = Some(checksum(r.terminal.address));
+        record.terminal_chain = Some(r.terminal.chain.as_str().into());
+        record.authority_kind = Some(r.kind.as_str().into());
         record.compromise_depth = r.compromise_depth.map(i64::from);
         record.timelock_seconds = Some(r.timelock_seconds as i64);
-        record.resolution_confidence = Some(confidence_str(r.confidence).into());
+        record.resolution_confidence = Some(r.confidence.as_str().into());
         resolved += 1;
     }
     resolved
@@ -137,6 +131,8 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Scan {
             rpc_url,
+            l1_rpc_url,
+            call_interval_ms,
             concurrency,
             limit,
         } => {
@@ -206,7 +202,14 @@ async fn main() -> anyhow::Result<()> {
             // `eth_call` is far more expensive to the public endpoint than
             // `eth_getStorageAt`, and once its rate limiter trips it stays tripped for
             // seconds. The admin set is small enough that serialising it costs little.
-            let authority_scanner = AuthorityScanner::new(scanner.provider(), 1);
+            let base = Endpoint::new(scanner.provider(), Duration::from_millis(call_interval_ms));
+            // The public Ethereum endpoint took a 60-call burst without a single refusal, so a
+            // light gap is courtesy rather than necessity.
+            let ethereum = Endpoint::new(
+                hermes_scan::connect(&l1_rpc_url).await?,
+                Duration::from_millis(100),
+            );
+            let authority_scanner = AuthorityScanner::new(base, ethereum, 1);
             let resolved = resolve_authorities(&authority_scanner, &mut records).await;
 
             let written = store.upsert_many(&records).await?;

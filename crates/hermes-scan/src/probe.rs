@@ -83,9 +83,14 @@ pub struct Scanner {
     max_retries: u32,
 }
 
+/// Open a JSON-RPC connection. Lives here so every network handle is made in this crate.
+pub async fn connect(rpc: &str) -> anyhow::Result<DynProvider> {
+    Ok(ProviderBuilder::new().connect(rpc).await?.erased())
+}
+
 impl Scanner {
     pub async fn connect(rpc: &str, concurrency: usize) -> anyhow::Result<Self> {
-        let provider = ProviderBuilder::new().connect(rpc).await?.erased();
+        let provider = connect(rpc).await?;
         Ok(Self {
             provider,
             concurrency,

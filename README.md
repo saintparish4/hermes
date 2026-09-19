@@ -1,10 +1,12 @@
 # Hermes
 
-- A Base-native scanner that ranks every privileged key on the chain by what it controls: if an authority is compromised tomorrow, how much money moves, and how long do you have to react? Hermes ignores contract code and models the capability surface instead — who can upgrade what, how many keys that takes, whether a timelock stands in the way, and what the resulting exposure is in dollars. The unit of analysis is the authority, not the contract.
+A Base-native scanner that ranks upgrade authorities by what they control: if an authority is compromised tomorrow, what can it replace, and how many keys does that take? Hermes ignores contract code and models the capability surface instead — who can upgrade what, how many keys that takes, and whether a timelock stands in the way. The unit of analysis is the authority, not the contract. (Dollar exposure is the next question and is not built yet.)
 
 **Live:** [hermes-production-29bf.up.railway.app](https://hermes-production-29bf.up.railway.app) · [/authorities](https://hermes-production-29bf.up.railway.app/authorities) · [/coverage](https://hermes-production-29bf.up.railway.app/coverage)
 
-One EOA can upgrade 20 of the 62 contracts currently indexed — a `ProxyAdmin` whose `owner()` has no code behind it. A contract-indexed tool shows 62 rows of equal weight; this is the difference.
+20 of the 62 contracts currently indexed — the OP Stack predeploys — answer to **one authority: a 2-of-2 Safe on Ethereum**, acting on Base through its L1→L2 alias. Its owners are a 3-of-6 and an 8-of-11 Safe, so taking control takes **11 keys**. A contract-indexed tool shows 62 rows of equal weight; this is the difference.
+
+**Correction.** Until 2026-09-19 this README, and the live `/authorities` page, said that one *EOA* controlled those 20 contracts. That was wrong. The `ProxyAdmin`'s owner has no code on Base because it is the L2 alias of a contract on Ethereum, and Hermes read "no code" as "a single key". The resolver now checks the unaliased address on L1 before it will call anything a key. The five remaining single-key authorities were re-checked the same way and are genuine.
 
 ## Requirements:
 
@@ -77,13 +79,16 @@ Shipped today:
 - **Slot-constant derivation** — the constants are re-derived from `keccak256` in the test rather than restated. One wrong nibble in `IMPL_SLOT` classifies every address on Base as not upgradeable while the scan, the coverage number and the rest of the suite all stay green.
 - **Classification** — every branch, including the precedence rules and the coverage set.
 - **Negative-read merging** — the exact spurious-blank case that would otherwise turn a live proxy into "not upgradeable".
-- **Store and API** — upsert idempotency, label preservation, the many-proxies-one-admin grouping property, default filtering, 404-not-500, case-insensitive lookup.
+- **The resolver** — cheapest-m-of-n key arithmetic, cycles, depth truncation, confidence that only falls, thresholds that lie, and the aggregation property: two proxies under distinct `ProxyAdmin`s sharing one Safe collapse to a single authority.
+- **L1→L2 aliasing** — the alias arithmetic against the real `0x8cC5…6a6d ↔ 0x7bB4…595c` pair, including wrap-around at both ends of the address space; the live predeploy structure resolving to a Safe on Ethereum at 11 keys; its leaf keys landing exactly on the depth cap; an unread L1 staying undetermined rather than becoming a key; and the same address on two chains being two accounts.
+- **Store and API** — upsert idempotency, label preservation, the grouping properties, resolution columns replaced as a unit (so a new root never inherits the old root's key count), one-time retraction of resolutions made before aliasing was modelled, reads that name their columns (a `SELECT *` on a pooled connection with a pre-migration schema panicked the driver 7 times in 60), default filtering, 404-not-500, 409 on a cross-chain ambiguous authority, case-insensitive lookup.
+
+Each fix above was checked by putting the bug back and watching its test fail.
 
 Still to come, alongside the work that needs them:
 
 - **Fixture-based tests** for authority resolution — real Safe and Timelock responses from Base, block-pinned and checked in, tested against fixtures rather than live RPC.
 - **Hand-verification suite** — ten protocols with expected `terminal_authority`, `compromise_depth`, and `timelock_seconds` recorded in a checked-in table, curated by shape rather than by TVL.
-- **Aggregation test** — two proxies under distinct `ProxyAdmin` contracts sharing one Safe owner must collapse to a single authority.
 - **Property tests** (`proptest`) for the recursive resolver — cycle detection, depth limiting, and `compromise_depth` arithmetic over contracts that lie.
 
 **Frontend:**
@@ -101,11 +106,16 @@ All optional — every one has a working default.
 |---|---|---|
 | `HERMES_DB` | `sqlite://hermes.db` | both |
 | `HERMES_RPC_URL` | `https://mainnet.base.org` | `scan` |
-| `HERMES_CONCURRENCY` | `3` | `scan` |
+| `HERMES_L1_RPC_URL` | `https://eth.drpc.org` | `scan` (Ethereum reads behind aliased authorities) |
+| `HERMES_CONCURRENCY` | `3` | `scan` (slot reads) |
+| `HERMES_CALL_INTERVAL_MS` | `1000` | `scan` (gap between resolution calls to Base) |
 | `HERMES_STATIC_DIR` | `static` | `serve` |
 | `PORT` | `8080` | `serve` |
+| `HERMES_SCAN_INTERVAL` | `86400` | container refresh loop |
 
 On `HERMES_CONCURRENCY`: 3 concurrent readers complete a scan against the public Base endpoint with zero failures, where 8 fail *silently* — the endpoint returns empty code and zero storage words for contracts that demonstrably have both. Raise it only against a paid endpoint.
+
+On `HERMES_CALL_INTERVAL_MS`: the public Base endpoint allows about ten back-to-back `eth_call`s, then answers HTTP 429 until it has seen roughly seven seconds of quiet (measured 2026-09-19). Unpaced, the resolver lost different nodes on different runs, so the resolved count wandered between scans (25 on one run, 28 on the next). At one call per second it resolved 28 on consecutive runs with no undetermined reads. Set it to `0` against a keyed endpoint.
 
 ## Architecture:
 
@@ -117,15 +127,15 @@ On `HERMES_CONCURRENCY`: 3 concurrent readers complete a scan against the public
 - **Storage**: SQLite via `sqlx`. Chosen over Postgres deliberately — the dataset is small (<10⁵ rows) and it removes a deployment dependency.
 - **Serving**: `axum`, handling both the JSON API and the static frontend bundle.
 - **Frontend**: Next.js, static export only (`output: 'export'`) — no SSR, no API routes, no server actions, no auth.
-- **Pricing**: DeFiLlama coins API — chain-prefixed addresses (`base:0x…`), batch queries, no API key.
+- **Pricing** (planned, not built): DeFiLlama coins API — chain-prefixed addresses (`base:0x…`), batch queries, no API key.
 
 ### Repository layout
 
 ```
 hermes/
 ├── crates/
-│   ├── hermes-core/     # slot constants, proxy classification, shared types
-│   ├── hermes-scan/     # RPC pipeline: authority resolution, balances, pricing
+│   ├── hermes-core/     # slot constants, classification, L1→L2 aliasing, the pure resolver, SQLite store
+│   ├── hermes-scan/     # all network I/O: slot probing, authority probing on Base and Ethereum
 │   ├── hermes-api/      # axum server, JSON endpoints, static file serving
 │   └── hermes-cli/      # scan orchestration entrypoint
 ├── home/                # Next.js landing page, static export
@@ -153,45 +163,47 @@ An admin address is resolved to a governance structure by probing interfaces and
 - `getOwners()` + `getThreshold()` ⇒ Gnosis Safe
 - `owner()` ⇒ OZ `ProxyAdmin` or `Ownable`; recurse on the result
 - `getMinDelay()` ⇒ `TimelockController`; capture the delay
-- Empty code ⇒ EOA, terminal
+- Empty code on Base ⇒ **not yet an answer.** An Ethereum contract acts on Base at its own address plus `0x1111…1111`, and that aliased address has no code. So Hermes reads the unaliased address on Ethereum: code there ⇒ follow the walk onto Ethereum; confirmed empty there too ⇒ EOA, terminal; unreadable ⇒ `Unknown`, never EOA
 - No interface matches ⇒ `Unknown`, flagged rather than guessed
 
-Each proxy resolves to a `terminal_authority` (the root of the chain, not the immediate admin), a `compromise_depth` (minimum distinct key compromises required to execute an upgrade), a `timelock_seconds`, and a `resolution_confidence`.
+Each proxy resolves to a `terminal_authority` (the root of the chain, not the immediate admin), a `terminal_chain` (`base` or `ethereum`), a `compromise_depth` (minimum distinct key compromises required to execute an upgrade, `null` when any part of the chain is unknown), a `timelock_seconds`, and a `resolution_confidence`. An m-of-n Safe costs the sum of its *m cheapest* owners.
 
-### Exposure aggregation
+The predeploy authority walks four links — `ProxyAdmin` (Base) → alias (Base) → 2-of-2 Safe (Ethereum) → a 3-of-6 and an 8-of-11 Safe → 17 keys — which lands its leaf keys exactly on the depth cap. A test pins that, so if those leaves ever turn out to be Safes the answer becomes `null` rather than a quietly miscounted number.
 
-Per proxy, `direct_custody` = native ETH + Σ(ERC-20 balance × price), read via `get_balance` and `balanceOf` batched through Multicall3. Per authority, `authority_var` = Σ `direct_custody` across every proxy whose `terminal_authority` is that authority. If an authority can replace a proxy's implementation, its exposure is that proxy's full custody — arbitrary code replacement subsumes every other capability.
+### Exposure aggregation (planned, not built)
+
+Nothing below is implemented yet; it is the v1.1 design. Per proxy, `direct_custody` = native ETH + Σ(ERC-20 balance × price), read via `get_balance` and `balanceOf` batched through Multicall3. Per authority, `authority_var` = Σ `direct_custody` across every proxy whose `terminal_authority` is that authority. If an authority can replace a proxy's implementation, its exposure is that proxy's full custody — arbitrary code replacement subsumes every other capability.
 
 ### Pipeline
 
+Built today:
+
 ```
-DeFiLlama list + Basescan export
+hand-curated seed (62 addresses)
       ↓
-dedupe by checksummed address
+eth_getStorageAt × 5 slots + eth_getCode → proxy classification → admin address
       ↓
-eth_getStorageAt × 3 slots → proxy classification → admin address
+recursive authority resolution on Base, crossing to Ethereum through L1→L2 aliases
       ↓
-recursive authority resolution → terminal_authority
+GROUP BY (terminal_authority, terminal_chain)
       ↓
-Multicall3 balance reads → DeFiLlama price lookup → direct_custody
-      ↓
-GROUP BY terminal_authority → authority_var
-      ↓
-SQLite → JSON API + leaderboard
+SQLite → JSON API + static page
 ```
+
+Planned: chain-wide proxy discovery in place of the hand-curated seed, then Multicall3 balance reads and DeFiLlama prices for `direct_custody` and `authority_var`.
 
 ### API
 
-Served today: `GET /proxies`, `GET /proxies/{address}`, `GET /authorities`, `GET /coverage`, `GET /healthz`. `/authorities` currently groups by each proxy's *immediate* admin and says so in its response — authority resolution is what turns that into a terminal authority, and the route keeps its shape when it lands.
+Served today:
 
-The full v1 surface:
+- `GET /authorities` — resolved roots ranked by how many proxies each controls, each with its `chain`, `kind`, `compromise_depth`, `timelock_seconds` and `confidence`. Unresolved proxies are left out rather than bucketed under a placeholder; `/coverage` counts them.
+- `GET /authorities/{address}` — one authority and every proxy it controls. If the same address is a root on both Base and Ethereum, pass `?chain=base` or `?chain=ethereum`; without it the answer is a 409 naming both, not whichever row sorts first.
+- `GET /proxies` — covered proxies with their classification and resolved root (`?all=true` includes non-proxies).
+- `GET /proxies/{address}` — one proxy.
+- `GET /coverage` — scan counts, resolved count, distinct roots, last scan time.
+- `GET /healthz` — plain `ok`, never touches SQLite.
 
-- `GET /authorities` — ranked list of authorities by `authority_var`.
-- `GET /authorities/:address` — one authority: type, threshold, `compromise_depth`, timelock, and every proxy it controls.
-- `GET /proxies` — flat proxy list with `direct_custody` and `terminal_authority`.
-- `GET /proxies/:address` — one proxy and its full resolution chain.
-- `GET /coverage` — scan statistics and confidence distribution.
-- `GET /methodology` — what is covered, what is not, and how exposure is computed.
+Planned: ranking by `authority_var` once exposure exists, and `GET /methodology`.
 
 ## Deployment:
 

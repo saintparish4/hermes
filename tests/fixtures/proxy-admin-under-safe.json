@@ -1,0 +1,112 @@
+{
+  "name": "proxy-admin-under-safe",
+  "target": "0xd8ba9d1a99fc21f0eca24e9b85737c28a194a4e2",
+  "blocks": {
+    "base": 51526000,
+    "ethereum": 26013200
+  },
+  "recorded_at": 1789841812,
+  "reads": {
+    "base": {
+      "storage": {
+        "0xd8ba9d1a99fc21f0eca24e9b85737c28a194a4e2": {
+          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x0000000000000000000000006d58cf06580b0991eca6a0b67df7bb71f3eed621",
+          "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103": "0x0000000000000000000000009caab947f1e02a192afda15c9fce8838a8d4755b",
+          "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "code": {
+        "0x7596f63e259b2a6b30bcaad0a07b72cfbb3dd4c6": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x7b35f59d50abe8aaf1b2461cec85c3714fdcc539": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x920f6a03eafc80c5c4119383aee56cecea115377": {
+          "size": 171,
+          "keccak256": "0xb89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000"
+        },
+        "0x9caab947f1e02a192afda15c9fce8838a8d4755b": {
+          "size": 1690,
+          "keccak256": "0x4e8a5693ecb0da4b8382ea10c4a2de307f3aefc5e894324ea538d420ee085cbc"
+        },
+        "0xd8ba9d1a99fc21f0eca24e9b85737c28a194a4e2": {
+          "size": 2227,
+          "keccak256": "0x4d9be648c5bf39973670d9f8b481d5d0b971e6a2db2deccc6b98cde21c5dd83e"
+        },
+        "0xee9ea50d6796d2ec0f6ee18108f453942bcb6f8c": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xf84474c95d430b8b20b0f0535af477352558ff84": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xf866ad147b5269280e9bfaeca109a31ac8af35ba": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        }
+      },
+      "call": {
+        "0x920f6a03eafc80c5c4119383aee56cecea115377": {
+          "0x8da5cb5b": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xa0e67e2b": {
+            "ok": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000005000000000000000000000000ee9ea50d6796d2ec0f6ee18108f453942bcb6f8c0000000000000000000000007b35f59d50abe8aaf1b2461cec85c3714fdcc539000000000000000000000000f866ad147b5269280e9bfaeca109a31ac8af35ba000000000000000000000000f84474c95d430b8b20b0f0535af477352558ff840000000000000000000000007596f63e259b2a6b30bcaad0a07b72cfbb3dd4c6"
+          },
+          "0xe75235b8": {
+            "ok": "0x0000000000000000000000000000000000000000000000000000000000000003"
+          },
+          "0xf27a0c92": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          }
+        },
+        "0x9caab947f1e02a192afda15c9fce8838a8d4755b": {
+          "0x8da5cb5b": {
+            "ok": "0x000000000000000000000000920f6a03eafc80c5c4119383aee56cecea115377"
+          },
+          "0xa0e67e2b": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xe75235b8": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xf27a0c92": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          }
+        }
+      }
+    },
+    "ethereum": {
+      "storage": {},
+      "code": {
+        "0x6485f63e259b2a6b30bcaad0a07b72cfbb3dc3b5": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x6a24f59d50abe8aaf1b2461cec85c3714fdcb428": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xdd8da50d6796d2ec0f6ee18108f453942bcb5e7b": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xe73374c95d430b8b20b0f0535af477352558ee73": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xe755ad147b5269280e9bfaeca109a31ac8af24a9": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        }
+      },
+      "call": {}
+    }
+  }
+}

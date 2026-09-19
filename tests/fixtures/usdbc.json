@@ -1,0 +1,102 @@
+{
+  "name": "usdbc",
+  "target": "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca",
+  "blocks": {
+    "base": 51526000,
+    "ethereum": 26013200
+  },
+  "recorded_at": 1789841784,
+  "reads": {
+    "base": {
+      "storage": {
+        "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": {
+          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x0000000000000000000000001833c6171e0a3389b156eaedb301cffbf328b463",
+          "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103": "0x000000000000000000000000d94e416cf2c7167608b2515b7e4102b41efff94f",
+          "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "code": {
+        "0x3cd692ece8b6573a2220ae00d0deb98f0dffa9a1": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x3dad2200849925bb46d9bf05afa5f7f213f4c18e": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x5fbefa105bbd53b43bf537cbc5cd30804dd0c993": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x6cd3850756b7894774ab715d136f9dd02837de50": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xb011a32ed8b4f70d9943a2199f539bbecd7b62f7": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xd94e416cf2c7167608b2515b7e4102b41efff94f": {
+          "size": 171,
+          "keccak256": "0xb89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000"
+        },
+        "0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca": {
+          "size": 2096,
+          "keccak256": "0x8cd2f08c7ee9e6ab6e0180e8d6cb0613bbd54d2c4ae2ecdcaddfcdd9a226215b"
+        },
+        "0xf9e320f3da12e68af219d9e2a490dd649f6b177c": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        }
+      },
+      "call": {
+        "0xd94e416cf2c7167608b2515b7e4102b41efff94f": {
+          "0x8da5cb5b": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xa0e67e2b": {
+            "ok": "0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000006000000000000000000000000f9e320f3da12e68af219d9e2a490dd649f6b177c000000000000000000000000b011a32ed8b4f70d9943a2199f539bbecd7b62f70000000000000000000000003dad2200849925bb46d9bf05afa5f7f213f4c18e0000000000000000000000005fbefa105bbd53b43bf537cbc5cd30804dd0c9930000000000000000000000003cd692ece8b6573a2220ae00d0deb98f0dffa9a10000000000000000000000006cd3850756b7894774ab715d136f9dd02837de50"
+          },
+          "0xe75235b8": {
+            "ok": "0x0000000000000000000000000000000000000000000000000000000000000003"
+          },
+          "0xf27a0c92": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          }
+        }
+      }
+    },
+    "ethereum": {
+      "storage": {},
+      "code": {
+        "0x2bc592ece8b6573a2220ae00d0deb98f0dff9890": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x2c9c2200849925bb46d9bf05afa5f7f213f4b07d": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x4eadfa105bbd53b43bf537cbc5cd30804dd0b882": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x5bc2850756b7894774ab715d136f9dd02837cd3f": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x9f00a32ed8b4f70d9943a2199f539bbecd7b51e6": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xe8d220f3da12e68af219d9e2a490dd649f6b066b": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        }
+      },
+      "call": {}
+    }
+  }
+}

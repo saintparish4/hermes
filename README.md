@@ -59,6 +59,17 @@ cargo run -p hermes-cli -- serve --port 8080
 
 `hermes scan` fails loudly rather than reporting success when a run stores zero covered proxies — a scan that quietly stores nothing, followed by a server that cheerfully serves an empty table, is how a public dashboard starts lying.
 
+Three developer subcommands ride in the same binary, because they have to run exactly the pipeline the deployment runs:
+
+```bash
+cargo run -p hermes-cli -- record 0x4200000000000000000000000000000000000010 --name l2-standard-bridge \
+    --block 51526000 --l1-block 26013200   # saves every chain answer to tests/fixtures/<name>.json
+cargo run -p hermes-cli -- verify          # re-checks tests/verified.json against the live chain
+cargo run -p hermes-cli -- migrate         # brings the database to the current schema and exits
+```
+
+`record` prints what Hermes concluded, but that output never becomes an expectation. Expectations in `tests/verified.json` are established by reading the chain without Hermes (see [docs/verification.md](docs/verification.md)); a table that learned its answers from the program under test could not catch that program being wrong.
+
 CI (`.github/workflows/ci.yml`) runs on every push/PR to `master` across Ubuntu and macOS:
 
 ```bash
@@ -70,9 +81,11 @@ cargo build --workspace --locked
 
 Clippy's `cognitive_complexity` lint is denied workspace-wide with the threshold set in `clippy.toml`. It is a nursery lint, so `-D warnings` alone would never reach it.
 
+A second workflow (`.github/workflows/verify-live.yml`) runs `hermes verify` daily against the live chain and is allowed to fail. The two are kept apart on purpose: CI replays pinned fixtures, so red there means Hermes regressed; red in the live job means Hermes regressed *or the chain moved*. Re-recording the fixture at the new head and diffing it says which.
+
 ## Testing:
 
-`cargo test --workspace`. Every test is offline — pure functions or `sqlite::memory:` — because network-dependent tests are flaky tests.
+`cargo test --workspace`. Every test is offline — pure functions, `sqlite::memory:`, a temp file, or recorded chain answers replayed from `tests/fixtures/` — because network-dependent tests are flaky tests.
 
 Shipped today:
 
@@ -81,14 +94,15 @@ Shipped today:
 - **Negative-read merging** — the exact spurious-blank case that would otherwise turn a live proxy into "not upgradeable".
 - **The resolver** — cheapest-m-of-n key arithmetic, cycles, depth truncation, confidence that only falls, thresholds that lie, and the aggregation property: two proxies under distinct `ProxyAdmin`s sharing one Safe collapse to a single authority.
 - **L1→L2 aliasing** — the alias arithmetic against the real `0x8cC5…6a6d ↔ 0x7bB4…595c` pair, including wrap-around at both ends of the address space; the live predeploy structure resolving to a Safe on Ethereum at 11 keys; its leaf keys landing exactly on the depth cap; an unread L1 staying undetermined rather than becoming a key; and the same address on two chains being two accounts.
+- **The hand-verified table** — eleven addresses chosen by shape ([docs/verification.md](docs/verification.md)): the L1-aliased predeploy authority, the self-administered `ProxyAdmin`, an `AdminOnly` predeploy, a Safe as direct admin, a `ProxyAdmin` under a Safe, a genuine single key, an admin that is honestly unknown, UUPS, beacon, USDC (not covered) and WETH9 (not upgradeable). Each has a fixture recorded at the block its expectation was checked at, and CI replays every one through the production pipeline. Replay is keyed by (chain, method, address, slot or calldata), never by arrival order, and a read the recording never saw fails loudly instead of looking like an outage.
+- **Concurrent opens** — eight processes' worth of `Store::open` against one file, spawned rather than awaited in turn. It used to fail 18 times in 60 with `database is locked`: switching a file into WAL needs a lock SQLite will not wait for through the busy timeout, and every pooled connection was asking. The switch now happens once, with a bounded retry, and the migration runs in one `BEGIN IMMEDIATE` transaction. 0 failures in 200 runs; 20 in 60 with the old per-connection switch put back.
 - **Store and API** — upsert idempotency, label preservation, the grouping properties, resolution columns replaced as a unit (so a new root never inherits the old root's key count), one-time retraction of resolutions made before aliasing was modelled, reads that name their columns (a `SELECT *` on a pooled connection with a pre-migration schema panicked the driver 7 times in 60), default filtering, 404-not-500, 409 on a cross-chain ambiguous authority, case-insensitive lookup.
 
 Each fix above was checked by putting the bug back and watching its test fail.
 
 Still to come, alongside the work that needs them:
 
-- **Fixture-based tests** for authority resolution — real Safe and Timelock responses from Base, block-pinned and checked in, tested against fixtures rather than live RPC.
-- **Hand-verification suite** — ten protocols with expected `terminal_authority`, `compromise_depth`, and `timelock_seconds` recorded in a checked-in table, curated by shape rather than by TVL.
+- **A timelock row** in the verified table, once the index contains an admin chain that has one.
 - **Property tests** (`proptest`) for the recursive resolver — cycle detection, depth limiting, and `compromise_depth` arithmetic over contracts that lie.
 
 **Frontend:**
@@ -222,7 +236,7 @@ Rust compiler                 next build (output: 'export')
 The container refreshes on a loop behind the server, writing to the same SQLite file the API reads from. Two boot paths, depending on whether there is anything to serve:
 
 - **Database empty** — scan first, then open the port. Serving an empty table is worse than making the first visitor wait, and this is the state a first deploy starts in, or every deploy if the volume is ever missing.
-- **Database populated** — open the port immediately and refresh in the background.
+- **Database populated** — run `hermes migrate` once, alone, then open the port immediately and refresh in the background. `Store::open` is safe to race, but a deploy that adds a column is exactly when the scan and the server would otherwise both be changing the schema.
 
 Refreshes never run in front of the port. A scan that has to finish before serving starts leaves the health check unanswered for its whole duration, which is survivable at 62 seeded addresses and stops being survivable as the seed grows.
 

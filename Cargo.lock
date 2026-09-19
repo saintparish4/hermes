@@ -2152,6 +2152,7 @@ dependencies = [
  "hermes-api",
  "hermes-core",
  "hermes-scan",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2178,6 +2179,8 @@ dependencies = [
  "anyhow",
  "futures",
  "hermes-core",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
 ]

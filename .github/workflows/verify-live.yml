@@ -1,0 +1,34 @@
+name: Live re-check
+
+# Runs the hand-verified table (tests/verified.json) against the live chain. This job is allowed
+# to fail, and it is kept apart from CI on purpose: CI replays pinned fixtures, so red there
+# means Hermes regressed. Red here means Hermes regressed *or the chain moved* (an admin was
+# transferred, a threshold changed). Collapsing the two into one red X is how a suite gets
+# ignored. To tell which happened, re-record the failing fixture at the new head with
+# `hermes record` and diff it against the checked-in one.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: hermes verify (live)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify against the live chain
+        run: cargo run --release --locked -p hermes-cli -- verify

@@ -12,6 +12,12 @@ if [ ! -s "$DB_FILE" ]; then
   hermes scan || echo "hermes: initial scan failed; serving an empty store" >&2
   first_delay="${HERMES_SCAN_INTERVAL:-86400}"
 else
+  # Migrate once, alone, before the refresh and the server open the file together. Store::open
+  # is safe to race, but a deploy that adds a column is exactly when two processes would
+  # otherwise both be changing the schema. This has to stay inside this branch: run before the
+  # emptiness check, it would create the schema, the file would no longer be empty, and a fresh
+  # volume would open the port on an empty table.
+  hermes migrate
   # There was already data, so refresh it now rather than serving whatever the last deploy
   # left behind until tomorrow.
   first_delay=0

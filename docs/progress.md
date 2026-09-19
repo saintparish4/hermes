@@ -21,6 +21,7 @@ row is what the next deploy will serve; it is not live until it is deployed.
 |---|---|---|---|---|---|
 | 2026-09-16 | Baseline | 84 | 18/60 isolated runs of `concurrent_opens…` (measured 2026-09-19) | not recorded | |
 | 2026-09-19 | Step 1 | 102 | unchanged (step 2 fixes it) | 2m54s | Resolution paced at 1 call/s to Base; unpaced runs resolved 25 or 28 depending on the rate limiter |
+| 2026-09-19 | Step 2: reliable gate, verified table | 114 | **0/200** (20/60 with the old code put back) | 2m54s | 11 hand-verified addresses replayed offline in 2.8s; live `hermes verify` 11/11 in 1m39s |
 
 ## PRD §8 minimum bar
 
@@ -28,7 +29,7 @@ row is what the next deploy will serve; it is not live until it is deployed.
 |---|---|
 | Deployed, public, no login | Yes |
 | ≥500 proxies indexed and ranked | No: 58 covered |
-| Ten protocols hand-verified | No |
+| Ten protocols hand-verified | **Yes: 11**, by shape, replayed in CI ([docs/verification.md](verification.md)). The human "open every link" pass is still Sharif's |
 | README a stranger can follow | Yes, and the headline claim is now correct |
 | One published write-up | No |
 
@@ -42,6 +43,12 @@ row is what the next deploy will serve; it is not live until it is deployed.
   upgrade path (Coordinator multisig plus Security Council).
 - **2026-09-19: the other five single-key roots are genuine.** Each one's unaliased address
   has no code on Ethereum, on two independent endpoints.
+- **2026-09-19: the `database is locked` flake was the WAL switch, not the migration.** All 29
+  captured failures were at connect: sqlx issued `journal_mode = WAL` on every pooled
+  connection, and SQLite will not wait for that lock through the busy timeout. One switch with
+  a bounded retry, then the migration in one `BEGIN IMMEDIATE`: 0 of 200.
+- **2026-09-19: USDbC's 3-of-6 Safe on Base shares five of six signers** with the 3-of-6 Safe
+  on Ethereum behind the predeploys.
 - **2026-09-19: `SELECT *` after a migration panicked sqlx** in 7 of 60 runs: a pooled
   connection with a cached pre-`ALTER` schema prepared 13 columns and was handed 14. Named
   columns: 0 of 100. Production would have hit this on the deploy that adds `terminal_chain`.

@@ -12,9 +12,8 @@
 //! authority may really live: an L1 contract acts on L2 through an aliased address that has no
 //! code of its own, so "no code on Base" is a question for L1 before it is an answer.
 
+use crate::rpc::ChainRpc;
 use alloy::primitives::{Address, B256, Bytes, U256, keccak256};
-use alloy::providers::{DynProvider, Provider};
-use alloy::rpc::types::TransactionRequest;
 use futures::stream::{self, StreamExt};
 use hermes_core::{AuthorityProbe, Chain, Code, MAX_DEPTH, Node, edges, undo_l1_to_l2_alias};
 use std::collections::{HashMap, HashSet};
@@ -113,7 +112,7 @@ fn note_undetermined(node: Node, what: &str) {
 }
 
 /// Distinguish a contract saying "no such function" from the node saying nothing useful.
-fn is_revert(error: &str) -> bool {
+pub(crate) fn is_revert(error: &str) -> bool {
     let e = error.to_ascii_lowercase();
     e.contains("execution reverted") || e.contains("invalid opcode") || e.contains("out of gas")
 }
@@ -140,26 +139,26 @@ fn codeless_on_base(l1: Address, l1_code_is_empty: Option<bool>) -> Option<Code>
 /// 30 for 30. Spacing requests is what makes coverage stable; retrying harder does not.
 #[derive(Clone)]
 pub struct Endpoint {
-    provider: DynProvider,
+    rpc: Arc<dyn ChainRpc>,
     interval: Duration,
     next_slot: Arc<Mutex<Instant>>,
 }
 
 impl Endpoint {
-    pub fn new(provider: DynProvider, interval: Duration) -> Self {
+    pub fn new(rpc: Arc<dyn ChainRpc>, interval: Duration) -> Self {
         Self {
-            provider,
+            rpc,
             interval,
             next_slot: Arc::new(Mutex::new(Instant::now())),
         }
     }
 
-    /// The provider, once this endpoint's turn has come round.
-    async fn paced(&self) -> &DynProvider {
+    /// The reader, once this endpoint's turn has come round.
+    async fn paced(&self) -> &dyn ChainRpc {
         let mut next = self.next_slot.lock().await;
         tokio::time::sleep_until(*next).await;
         *next = Instant::now() + self.interval;
-        &self.provider
+        self.rpc.as_ref()
     }
 }
 
@@ -179,7 +178,7 @@ impl AuthorityScanner {
         }
     }
 
-    async fn provider(&self, chain: Chain) -> &DynProvider {
+    async fn rpc(&self, chain: Chain) -> &dyn ChainRpc {
         match chain {
             Chain::Base => self.base.paced().await,
             Chain::Ethereum => self.ethereum.paced().await,
@@ -192,11 +191,14 @@ impl AuthorityScanner {
     /// how a rate-limited `getOwners()` turns a Safe into an `Ownable` — the threshold
     /// vanishes, the owner set vanishes, and the key count silently drops to one.
     async fn call(&self, node: Node, sel: [u8; 4]) -> CallOutcome {
-        let tx = TransactionRequest::default()
-            .to(node.address)
-            .input(Bytes::from(sel.to_vec()).into());
+        let input = Bytes::from(sel.to_vec());
         for attempt in 0..RETRIES {
-            match self.provider(node.chain).await.call(tx.clone()).await {
+            match self
+                .rpc(node.chain)
+                .await
+                .call(node.address, input.clone())
+                .await
+            {
                 Ok(out) if !out.is_empty() => return CallOutcome::Answered(out),
                 // An empty return is a contract answering without saying anything, which is
                 // not the interface I asked about. Retrying that learns nothing.
@@ -217,12 +219,7 @@ impl AuthorityScanner {
 
     async fn read_code_is_empty(&self, node: Node) -> Option<bool> {
         for attempt in 0..RETRIES {
-            match self
-                .provider(node.chain)
-                .await
-                .get_code_at(node.address)
-                .await
-            {
+            match self.rpc(node.chain).await.code(node.address).await {
                 Ok(code) => return Some(code.is_empty()),
                 Err(e) => {
                     note_retry(node, "eth_getCode", attempt, &e);

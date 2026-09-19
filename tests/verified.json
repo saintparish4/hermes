@@ -1,0 +1,274 @@
+[
+  {
+    "name": "proxy-admin",
+    "address": "0x4200000000000000000000000000000000000018",
+    "label": "ProxyAdmin",
+    "shape": "Self-administered: its admin slot is itself, so the walk leaves through owner() into an L1 alias",
+    "expected": {
+      "kind": "transparent",
+      "terminal_authority": "0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c",
+      "terminal_chain": "ethereum",
+      "authority_kind": "safe",
+      "compromise_depth": 11,
+      "timelock_seconds": 0,
+      "confidence": "high"
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x4200..0018 (itself). owner() = 0x8cC5..6a6d, which has no code on Base; minus 0x1111..1111 it is 0x7bB4..595c, which has code on Ethereum and answers getThreshold()=2 over getOwners() = [0x9855..46a1 (3-of-6 Safe), 0x20Ac..A4Dd (8-of-11 Safe)]. All 17 inner owners have no code on Ethereum. Cheapest route: 3 + 8 = 11 keys.",
+      "urls": [
+        "https://basescan.org/address/0x4200000000000000000000000000000000000018#readContract",
+        "https://app.safe.global/settings/setup?safe=eth:0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c",
+        "https://app.safe.global/settings/setup?safe=eth:0x9855054731540A48b28990B63DcF4f33d8AE46A1",
+        "https://app.safe.global/settings/setup?safe=eth:0x20AcF55A3DCfe07fC4cecaCFa1628F788EC8A4Dd"
+      ]
+    }
+  },
+  {
+    "name": "l2-standard-bridge",
+    "address": "0x4200000000000000000000000000000000000010",
+    "label": "L2StandardBridge",
+    "shape": "The headline: a predeploy whose ProxyAdmin is owned by an L1 contract through its L2 alias",
+    "expected": {
+      "kind": "transparent",
+      "terminal_authority": "0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c",
+      "terminal_chain": "ethereum",
+      "authority_kind": "safe",
+      "compromise_depth": 11,
+      "timelock_seconds": 0,
+      "confidence": "high"
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot set, admin slot = ProxyAdmin 0x4200..0018; from there the same walk as the proxy-admin row: alias 0x8cC5..6a6d -> 2-of-2 Safe 0x7bB4..595c on Ethereum over a 3-of-6 and an 8-of-11 Safe of EOAs.",
+      "urls": [
+        "https://basescan.org/address/0x4200000000000000000000000000000000000010",
+        "https://etherscan.io/address/0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c"
+      ]
+    }
+  },
+  {
+    "name": "l1-message-sender",
+    "address": "0x4200000000000000000000000000000000000001",
+    "label": "L1MessageSender (legacy predeploy)",
+    "shape": "AdminOnly: admin slot set, implementation never set, still a live upgrade authority",
+    "expected": {
+      "kind": "admin_only",
+      "terminal_authority": "0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c",
+      "terminal_chain": "ethereum",
+      "authority_kind": "safe",
+      "compromise_depth": 11,
+      "timelock_seconds": 0,
+      "confidence": "high"
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot zero, admin slot = 0x4200..0018, so whoever controls the ProxyAdmin can point it anywhere. Same root as the proxy-admin row.",
+      "urls": [
+        "https://basescan.org/address/0x4200000000000000000000000000000000000001"
+      ]
+    }
+  },
+  {
+    "name": "usdbc",
+    "address": "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+    "label": "USDbC",
+    "shape": "An m-of-n Safe as the direct admin (3-of-6 over EOAs)",
+    "expected": {
+      "kind": "transparent",
+      "terminal_authority": "0xd94E416cf2c7167608B2515B7e4102B41efff94f",
+      "terminal_chain": "base",
+      "authority_kind": "safe",
+      "compromise_depth": 3,
+      "timelock_seconds": 0,
+      "confidence": "high"
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0xd94E..f94f, a Safe answering getThreshold()=3 over 6 owners; every owner has no code on Base and none at its unaliased address on Ethereum. Five of the six signers also sit on the 3-of-6 Safe 0x9855..46a1 behind the predeploys.",
+      "urls": [
+        "https://basescan.org/address/0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+        "https://app.safe.global/settings/setup?safe=base:0xd94E416cf2c7167608B2515B7e4102B41efff94f"
+      ]
+    }
+  },
+  {
+    "name": "proxy-admin-under-safe",
+    "address": "0xd8Ba9D1a99Fc21f0ECA24e9b85737c28A194a4E2",
+    "label": "Unlabelled transparent proxy",
+    "shape": "A ProxyAdmin owned by a Safe: the root is the Safe, not the immediate admin",
+    "expected": {
+      "kind": "transparent",
+      "terminal_authority": "0x920F6A03EaFc80C5C4119383AEE56CeCea115377",
+      "terminal_chain": "base",
+      "authority_kind": "safe",
+      "compromise_depth": 3,
+      "timelock_seconds": 0,
+      "confidence": "high"
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x9CAA..755B, which answers owner() = 0x920F..7377 and reverts on the Safe and Timelock probes. 0x920F..7377 is a Safe, getThreshold()=3 over 5 owners, none with code on Base or at their unaliased Ethereum address.",
+      "urls": [
+        "https://basescan.org/address/0x9CAAB947F1E02A192AFda15c9fCe8838a8d4755B#readContract",
+        "https://app.safe.global/settings/setup?safe=base:0x920F6A03EaFc80C5C4119383AEE56CeCea115377"
+      ]
+    }
+  },
+  {
+    "name": "eoa-admin",
+    "address": "0xC0269FC72c0138a3A551cCf07f0819adABAa8973",
+    "label": "Unlabelled transparent proxy",
+    "shape": "A genuine single key: the admin has no code on Base and none behind its alias on Ethereum",
+    "expected": {
+      "kind": "transparent",
+      "terminal_authority": "0x000000dBc80bF780c6dc0ca16ed071b1F00Cc000",
+      "terminal_chain": "base",
+      "authority_kind": "eoa",
+      "compromise_depth": 1,
+      "timelock_seconds": 0,
+      "confidence": "high"
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x0000..C000, no code on Base; its unaliased address 0xeeef..aeef has no code on Ethereum, so no L1 contract can act as it. One key.",
+      "urls": [
+        "https://basescan.org/address/0x000000dBc80bF780c6dc0ca16ed071b1F00Cc000",
+        "https://etherscan.io/address/0xeeef00dbc80bf780c6dc0ca16ed071b1f00caeef"
+      ]
+    }
+  },
+  {
+    "name": "unknown-admin",
+    "address": "0x402E0d314fD6F55348Df7CC478bAb811826e3e91",
+    "label": "Unlabelled transparent proxy",
+    "shape": "Expected Unknown: the admin has code and answers none of the probes",
+    "expected": {
+      "kind": "transparent",
+      "terminal_authority": null,
+      "terminal_chain": null,
+      "authority_kind": null,
+      "compromise_depth": null,
+      "timelock_seconds": null,
+      "confidence": null
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x31e9..0c17, 15,609 bytes of code; getOwners(), getThreshold(), owner() and getMinDelay() all return empty data. Nothing recognized, so the honest answer is no root.",
+      "urls": [
+        "https://basescan.org/address/0x31e99E05fee3DCE580af777C3fD63eE1B3B40c17#code"
+      ]
+    }
+  },
+  {
+    "name": "usd-plus",
+    "address": "0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376",
+    "label": "USD+",
+    "shape": "UUPS: upgrade rights live in the implementation, not in an admin slot",
+    "expected": {
+      "kind": "uups",
+      "terminal_authority": null,
+      "terminal_chain": null,
+      "authority_kind": null,
+      "compromise_depth": null,
+      "timelock_seconds": null,
+      "confidence": null
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot set, admin and beacon slots zero. Hermes follows only the admin slot, so no root is expected.",
+      "urls": [
+        "https://basescan.org/address/0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376#readProxyContract"
+      ]
+    }
+  },
+  {
+    "name": "beacon-proxy",
+    "address": "0xCd76E4e8D7F498A728cfAfe088fB3e6fCBbfaB21",
+    "label": "Unlabelled beacon proxy",
+    "shape": "Beacon: upgrade rights belong to whoever controls the beacon",
+    "expected": {
+      "kind": "beacon",
+      "terminal_authority": null,
+      "terminal_chain": null,
+      "authority_kind": null,
+      "compromise_depth": null,
+      "timelock_seconds": null,
+      "confidence": null
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. Implementation and admin slots zero, beacon slot = 0x0000..b2dc. Hermes follows only the admin slot, so no root is expected.",
+      "urls": [
+        "https://basescan.org/address/0xCd76E4e8D7F498A728cfAfe088fB3e6fCBbfaB21",
+        "https://basescan.org/address/0x000000005aE5f42270cDf0E41960840e7FB1b2dc#readContract"
+      ]
+    }
+  },
+  {
+    "name": "usdc",
+    "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "label": "USDC",
+    "shape": "Not covered: the pre-1967 ZeppelinOS slot, kept to keep coverage honest",
+    "expected": {
+      "kind": "zeppelin_os",
+      "terminal_authority": null,
+      "terminal_chain": null,
+      "authority_kind": null,
+      "compromise_depth": null,
+      "timelock_seconds": null,
+      "confidence": null
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. All ERC-1967 slots zero; keccak256('org.zeppelinos.proxy.implementation') holds 0x2Ce6..d779. Recorded, not covered.",
+      "urls": [
+        "https://basescan.org/address/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913#readProxyContract"
+      ]
+    }
+  },
+  {
+    "name": "weth9",
+    "address": "0x4200000000000000000000000000000000000006",
+    "label": "WETH9",
+    "shape": "Not upgradeable: code present, every slot empty",
+    "expected": {
+      "kind": "not_upgradeable",
+      "terminal_authority": null,
+      "terminal_chain": null,
+      "authority_kind": null,
+      "compromise_depth": null,
+      "timelock_seconds": null,
+      "confidence": null
+    },
+    "checked": {
+      "on": "2026-09-19",
+      "base_block": 51526000,
+      "ethereum_block": 26013200,
+      "how": "Raw JSON-RPC outside Hermes. 2,041 bytes of code; implementation, admin, beacon and ZeppelinOS slots all zero.",
+      "urls": [
+        "https://basescan.org/address/0x4200000000000000000000000000000000000006#code"
+      ]
+    }
+  }
+]

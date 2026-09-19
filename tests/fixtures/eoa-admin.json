@@ -1,0 +1,43 @@
+{
+  "name": "eoa-admin",
+  "target": "0xc0269fc72c0138a3a551ccf07f0819adabaa8973",
+  "blocks": {
+    "base": 51526000,
+    "ethereum": 26013200
+  },
+  "recorded_at": 1789841814,
+  "reads": {
+    "base": {
+      "storage": {
+        "0xc0269fc72c0138a3a551ccf07f0819adabaa8973": {
+          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x000000000000000000000000cfc3541c74775f21e5e8de1fff957df50038441f",
+          "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103": "0x000000000000000000000000000000dbc80bf780c6dc0ca16ed071b1f00cc000",
+          "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "code": {
+        "0x000000dbc80bf780c6dc0ca16ed071b1f00cc000": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0xc0269fc72c0138a3a551ccf07f0819adabaa8973": {
+          "size": 543,
+          "keccak256": "0xd089a3b559a0a4d44075a0c639e94d86e109d71a1d2d4fd5af1948ead41bc3f2"
+        }
+      },
+      "call": {}
+    },
+    "ethereum": {
+      "storage": {},
+      "code": {
+        "0xeeef00dbc80bf780c6dc0ca16ed071b1f00caeef": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        }
+      },
+      "call": {}
+    }
+  }
+}

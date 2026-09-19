@@ -13,13 +13,15 @@
 //!   allowed to become a `NotUpgradeable` or `Eoa` verdict. This is how I handle storage
 //!   reads that disagree with each other mid-scan.
 
+use crate::rpc::{ChainRpc, LiveRpc};
 use alloy::primitives::{Address, B256};
 use alloy::providers::{DynProvider, Provider, ProviderBuilder};
 use futures::stream::{self, StreamExt};
 use hermes_core::{
-    ADMIN_SLOT, BEACON_SLOT, Classified, IMPL_SLOT, PROXIABLE_SLOT, SlotReads, classify, slot_key,
+    ADMIN_SLOT, BEACON_SLOT, Classified, IMPL_SLOT, PROXIABLE_SLOT, SlotReads, classify,
     slots::ZOS_IMPL_SLOT,
 };
+use std::sync::Arc;
 use std::time::Duration;
 
 /// How much the reads behind a verdict can be trusted.
@@ -78,7 +80,7 @@ impl ProbeOutcome {
 
 #[derive(Clone)]
 pub struct Scanner {
-    provider: DynProvider,
+    rpc: Arc<dyn ChainRpc>,
     concurrency: usize,
     max_retries: u32,
 }
@@ -90,18 +92,24 @@ pub async fn connect(rpc: &str) -> anyhow::Result<DynProvider> {
 
 impl Scanner {
     pub async fn connect(rpc: &str, concurrency: usize) -> anyhow::Result<Self> {
-        let provider = connect(rpc).await?;
-        Ok(Self {
-            provider,
+        Ok(Self::new(
+            Arc::new(LiveRpc::new(connect(rpc).await?)),
             concurrency,
-            max_retries: 6,
-        })
+        ))
     }
 
-    /// The live connection, so authority resolution reuses it rather than opening a second
-    /// one against the same rate limit.
-    pub fn provider(&self) -> DynProvider {
-        self.provider.clone()
+    pub fn new(rpc: Arc<dyn ChainRpc>, concurrency: usize) -> Self {
+        Self {
+            rpc,
+            concurrency,
+            max_retries: 6,
+        }
+    }
+
+    /// The connection, so authority resolution reuses it rather than opening a second one
+    /// against the same rate limit.
+    pub fn rpc(&self) -> Arc<dyn ChainRpc> {
+        Arc::clone(&self.rpc)
     }
 
     pub fn concurrency(&self) -> usize {
@@ -109,8 +117,7 @@ impl Scanner {
     }
 
     async fn storage(&self, addr: Address, slot: B256) -> anyhow::Result<B256> {
-        let v = self.provider.get_storage_at(addr, slot_key(slot)).await?;
-        Ok(B256::from(v))
+        self.rpc.storage(addr, slot).await
     }
 
     /// One full read of an address: five slots plus code size.
@@ -120,7 +127,7 @@ impl Scanner {
         let beacon = self.storage(addr, BEACON_SLOT).await?;
         let proxiable = self.storage(addr, PROXIABLE_SLOT).await?;
         let zos_implementation = self.storage(addr, ZOS_IMPL_SLOT).await?;
-        let code = self.provider.get_code_at(addr).await?;
+        let code = self.rpc.code(addr).await?;
         Ok((
             SlotReads {
                 implementation,

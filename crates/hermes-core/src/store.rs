@@ -8,9 +8,17 @@
 use crate::classify::ProxyKind;
 use alloy::primitives::Address;
 use serde::{Deserialize, Serialize};
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use sqlx::{Row, SqlitePool};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::{Connection, Row, SqliteConnection, SqlitePool};
 use std::str::FromStr;
+use std::time::Duration;
+
+/// How long a statement waits on another process's lock before failing.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How many times to ask for WAL before giving up. With the delays in `enable_wal` this is
+/// about six seconds, which is several lifetimes of any migration transaction.
+const WAL_ATTEMPTS: u32 = 12;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProxyRecord {
@@ -161,21 +169,34 @@ pub struct Store {
 
 impl Store {
     /// `url` is a SQLite URL, e.g. `sqlite://hermes.db`. The file is created if absent.
+    ///
+    /// The scan and the server open this file as separate processes at the same time, so
+    /// everything that changes the file's shape happens once, on one connection, before the
+    /// pool fans out: the switch to WAL, then the schema, the migration and the late indexes
+    /// as a single `BEGIN IMMEDIATE` transaction. `BEGIN IMMEDIATE` waits on the busy timeout,
+    /// so a second process opening at the same moment queues behind the first instead of
+    /// interleaving `ALTER`s with it.
     pub async fn open(url: &str) -> anyhow::Result<Self> {
+        // No `journal_mode` option here. sqlx would issue it on every pooled connection, and
+        // that is where concurrent opens died with `database is locked` (29 of 29 failures,
+        // all at connect): see `enable_wal`.
         let opts = SqliteConnectOptions::from_str(url)?
             .create_if_missing(true)
-            // A scan and the server run against this file at the same time in the deployed
-            // container. WAL is what lets the server keep answering reads while a scan
-            // commits, instead of both sides taking turns behind a lock.
-            .journal_mode(SqliteJournalMode::Wal)
-            .busy_timeout(std::time::Duration::from_secs(10));
+            .busy_timeout(BUSY_TIMEOUT);
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
             .connect_with(opts)
             .await?;
-        sqlx::raw_sql(SCHEMA).execute(&pool).await?;
-        migrate(&pool).await?;
-        sqlx::raw_sql(LATE_INDEXES).execute(&pool).await?;
+
+        let mut conn = pool.acquire().await?;
+        enable_wal(&mut conn).await?;
+        let mut tx = conn.begin_with("BEGIN IMMEDIATE").await?;
+        sqlx::raw_sql(SCHEMA).execute(&mut *tx).await?;
+        migrate(&mut tx).await?;
+        sqlx::raw_sql(LATE_INDEXES).execute(&mut *tx).await?;
+        tx.commit().await?;
+        drop(conn);
+
         Ok(Self { pool })
     }
 
@@ -409,12 +430,16 @@ fn row_to_record(r: &sqlx::sqlite::SqliteRow) -> ProxyRecord {
 /// check-then-add lets both read "column absent", both issue the `ALTER`, and the loser die
 /// on `duplicate column name`. Treating that specific error as success makes the migration
 /// idempotent by construction instead of by timing.
-async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
+///
+/// It now also runs inside `open`'s `BEGIN IMMEDIATE`, which serializes migrators. The
+/// attempt-every-`ALTER` rule stays anyway: it is what keeps an older binary, or a database
+/// someone migrated by hand, from turning into a crash loop.
+async fn migrate(conn: &mut SqliteConnection) -> anyhow::Result<()> {
     for added in ADDED_COLUMNS {
-        match sqlx::raw_sql(added.alter).execute(pool).await {
+        match sqlx::raw_sql(added.alter).execute(&mut *conn).await {
             Ok(_) => {
                 if let Some(statement) = added.on_add {
-                    sqlx::raw_sql(statement).execute(pool).await?;
+                    sqlx::raw_sql(statement).execute(&mut *conn).await?;
                 }
             }
             Err(e) if is_duplicate_column(&e) => {}
@@ -422,6 +447,45 @@ async fn migrate(pool: &SqlitePool) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Put the file in WAL mode, once, retrying while another process holds it.
+///
+/// WAL is what lets the server keep answering reads while a scan commits, instead of both
+/// sides taking turns behind a lock. It is a property of the file, so it only has to be set
+/// once, and switching into it needs an exclusive lock that SQLite will not wait for through
+/// the busy timeout: a second opener gets `SQLITE_BUSY` straight back (sqlx's own source notes
+/// the same). Measured before this existed, eight concurrent opens failed 18 times in 60 runs,
+/// every one of them there. A bounded retry is the only way to wait for this lock.
+async fn enable_wal(conn: &mut SqliteConnection) -> anyhow::Result<()> {
+    let mut delay = Duration::from_millis(10);
+    for _ in 0..WAL_ATTEMPTS {
+        match sqlx::query_scalar::<_, String>("PRAGMA journal_mode = WAL")
+            .fetch_one(&mut *conn)
+            .await
+        {
+            // An in-memory database answers `memory`; it has no file to put in WAL mode.
+            Ok(mode) if mode.eq_ignore_ascii_case("wal") || mode.eq_ignore_ascii_case("memory") => {
+                return Ok(());
+            }
+            Ok(_) => {}
+            Err(e) if is_busy(&e) => {}
+            Err(e) => return Err(e.into()),
+        }
+        tokio::time::sleep(delay).await;
+        delay = (delay * 2).min(Duration::from_secs(1));
+    }
+    anyhow::bail!("could not switch the database to WAL: another process kept it locked")
+}
+
+/// `SQLITE_BUSY` and its extended forms (`_RECOVERY`, `_SNAPSHOT`, `_TIMEOUT`) share the low
+/// byte 5.
+fn is_busy(error: &sqlx::Error) -> bool {
+    error
+        .as_database_error()
+        .and_then(|e| e.code())
+        .and_then(|code| code.parse::<i32>().ok())
+        .is_some_and(|code| code & 0xff == 5)
 }
 
 /// Only ever swallow the one error that means "another process already did this".

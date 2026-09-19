@@ -65,6 +65,23 @@ impl ProxyRecord {
     }
 }
 
+/// The cursor holding the per-family cap the last discovery run used.
+pub const DISCOVERY_CAP: &str = "discover.per_family";
+
+/// One address to scan, and where it came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SeedRow {
+    /// EIP-55 checksummed.
+    pub address: String,
+    pub label: Option<String>,
+    /// `curated` for the hand-written bootstrap list, `event` for chain-wide discovery.
+    pub source: String,
+    /// What the discovery cap counts against: `impl:0x…`, `beacon:0x…` or `admin:0x…`.
+    pub family: Option<String>,
+    pub first_block: Option<i64>,
+    pub discovered_at: i64,
+}
+
 /// One resolved authority and what it controls.
 #[derive(Debug, Clone, Serialize)]
 pub struct AuthorityRow {
@@ -96,6 +113,12 @@ pub struct Coverage {
     pub depth_unknown_by_reason: Vec<(String, i64)>,
     /// Resolved proxies by where their walk started.
     pub resolved_by_path: Vec<(String, i64)>,
+    /// Addresses queued for scanning, by where they came from (`curated`, `event`).
+    pub seeded_by_source: Vec<(String, i64)>,
+    /// The most addresses discovery admits per implementation, beacon or admin, when it has
+    /// run. The index is a sample, and this is how it was drawn: without a cap, mass-deployed
+    /// clones of a handful of contracts would be most of it.
+    pub discovery_per_family: Option<i64>,
 }
 
 const SCHEMA: &str = r#"
@@ -122,6 +145,21 @@ CREATE TABLE IF NOT EXISTS proxy (
 -- indexed from the start.
 CREATE INDEX IF NOT EXISTS idx_proxy_admin ON proxy(admin_addr);
 CREATE INDEX IF NOT EXISTS idx_proxy_kind  ON proxy(kind);
+-- What to scan. Growing the index is an insert here, not a recompile.
+CREATE TABLE IF NOT EXISTS seed (
+    address       TEXT PRIMARY KEY NOT NULL COLLATE NOCASE,
+    label         TEXT,
+    source        TEXT NOT NULL,
+    family        TEXT,
+    first_block   INTEGER,
+    discovered_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seed_family ON seed(family);
+-- Where a long-running job got to, so a killed run resumes rather than restarts.
+CREATE TABLE IF NOT EXISTS cursor (
+    name  TEXT PRIMARY KEY NOT NULL,
+    value INTEGER NOT NULL
+);
 "#;
 
 /// Indexes over columns that `migrate` may still be adding.
@@ -311,6 +349,160 @@ impl Store {
         Ok(n)
     }
 
+    /// Add addresses to scan. An address already seeded keeps its row, except that a curated
+    /// label replaces a missing one: the hand-written list is the only source of names.
+    pub async fn add_seeds(&self, rows: &[SeedRow]) -> anyhow::Result<u64> {
+        let mut tx = self.pool.begin().await?;
+        let mut written = 0;
+        for r in rows {
+            let res = sqlx::query(
+                "INSERT INTO seed (address, label, source, family, first_block, discovered_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+                 ON CONFLICT(address) DO UPDATE SET label = COALESCE(seed.label, excluded.label) \
+                 WHERE excluded.source = 'curated'",
+            )
+            .bind(&r.address)
+            .bind(&r.label)
+            .bind(&r.source)
+            .bind(&r.family)
+            .bind(r.first_block)
+            .bind(r.discovered_at)
+            .execute(&mut *tx)
+            .await?;
+            written += res.rows_affected();
+        }
+        tx.commit().await?;
+        Ok(written)
+    }
+
+    /// Every seeded address, lowercased, so discovery can skip what it already has.
+    pub async fn seeded_addresses(&self) -> anyhow::Result<std::collections::HashSet<String>> {
+        Ok(
+            sqlx::query_scalar::<_, String>("SELECT lower(address) FROM seed")
+                .fetch_all(&self.pool)
+                .await?
+                .into_iter()
+                .collect(),
+        )
+    }
+
+    /// How many addresses each discovery family already has in the seed.
+    pub async fn family_counts(&self) -> anyhow::Result<std::collections::HashMap<String, i64>> {
+        Ok(sqlx::query(
+            "SELECT family k, COUNT(*) c FROM seed WHERE family IS NOT NULL GROUP BY family",
+        )
+        .fetch_all(&self.pool)
+        .await?
+        .iter()
+        .map(|r| (r.get::<String, _>("k"), r.get::<i64, _>("c")))
+        .collect())
+    }
+
+    /// Seeded addresses not scanned since `fresh_since` (Unix seconds), curated ones first.
+    ///
+    /// Skipping what a recent run already covered is what makes a scan resumable: kill it
+    /// anywhere, run it again, and it carries on from the first address it had not reached.
+    /// A covered proxy that was classified but never had resolution attempted is due however
+    /// fresh it is, or a classify-only pass would hide it from resolution until it went stale.
+    pub async fn due_for_scan(
+        &self,
+        fresh_since: i64,
+        limit: Option<i64>,
+    ) -> anyhow::Result<Vec<(String, Option<String>)>> {
+        Ok(sqlx::query(concat!(
+            "SELECT s.address a, s.label l FROM seed s \
+             LEFT JOIN proxy p ON p.address = s.address COLLATE NOCASE \
+             WHERE p.scanned_at IS NULL OR p.scanned_at < ?1 \
+                OR (p.terminal_authority IS NULL AND p.unresolved_reason IS NULL \
+                    AND p.kind IN ",
+            covered_kinds!(),
+            ") ORDER BY s.source = 'curated' DESC, s.discovered_at, s.address \
+             LIMIT COALESCE(?2, -1)"
+        ))
+        .bind(fresh_since)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?
+        .iter()
+        .map(|r| (r.get("a"), r.get("l")))
+        .collect())
+    }
+
+    /// Addresses currently stored as covered proxies, lowercased, for the run canary.
+    pub async fn covered_addresses(&self) -> anyhow::Result<std::collections::HashSet<String>> {
+        Ok(sqlx::query_scalar::<_, String>(concat!(
+            "SELECT lower(address) FROM proxy WHERE kind IN ",
+            covered_kinds!()
+        ))
+        .fetch_all(&self.pool)
+        .await?
+        .into_iter()
+        .collect())
+    }
+
+    pub async fn cursor(&self, name: &str) -> anyhow::Result<Option<i64>> {
+        Ok(
+            sqlx::query_scalar("SELECT value FROM cursor WHERE name = ?1")
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await?,
+        )
+    }
+
+    pub async fn set_cursor(&self, name: &str, value: i64) -> anyhow::Result<()> {
+        sqlx::query(
+            "INSERT INTO cursor (name, value) VALUES (?1, ?2) \
+             ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+        )
+        .bind(name)
+        .bind(value)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// One page of proxies, largest code first, and how many there are in all.
+    pub async fn proxies_page(
+        &self,
+        only_covered: bool,
+        limit: i64,
+        offset: i64,
+    ) -> anyhow::Result<(Vec<ProxyRecord>, i64)> {
+        let (sql, count) = if only_covered {
+            (
+                concat!(
+                    "SELECT ",
+                    proxy_columns!(),
+                    " FROM proxy WHERE kind IN ",
+                    covered_kinds!(),
+                    " ORDER BY code_size DESC, address LIMIT ?1 OFFSET ?2"
+                ),
+                concat!(
+                    "SELECT COUNT(*) FROM proxy WHERE kind IN ",
+                    covered_kinds!()
+                ),
+            )
+        } else {
+            (
+                concat!(
+                    "SELECT ",
+                    proxy_columns!(),
+                    " FROM proxy ORDER BY code_size DESC, address LIMIT ?1 OFFSET ?2"
+                ),
+                "SELECT COUNT(*) FROM proxy",
+            )
+        };
+        let rows = sqlx::query(sql)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok((
+            rows.iter().map(row_to_record).collect(),
+            self.scalar(count).await?,
+        ))
+    }
+
     /// Proxies only (covered patterns), most recently scanned first.
     pub async fn list_proxies(&self, only_covered: bool) -> anyhow::Result<Vec<ProxyRecord>> {
         let sql = if only_covered {
@@ -464,6 +656,10 @@ impl Store {
                      WHERE terminal_authority IS NOT NULL GROUP BY k ORDER BY c DESC, k",
                 )
                 .await?,
+            seeded_by_source: self
+                .counts("SELECT source k, COUNT(*) c FROM seed GROUP BY k ORDER BY c DESC, k")
+                .await?,
+            discovery_per_family: self.cursor(DISCOVERY_CAP).await?,
         })
     }
 
@@ -1051,19 +1247,8 @@ mod tests {
     /// disagree with the classifier about what a proxy is.
     #[test]
     fn the_sql_covered_list_matches_the_classifier() {
-        use crate::classify::ProxyKind::*;
-        let all = [
-            Transparent,
-            Uups,
-            Beacon,
-            Eip1822,
-            AdminOnly,
-            ZeppelinOs,
-            NotUpgradeable,
-            Eoa,
-        ];
         let sql = covered_kinds!();
-        for kind in all {
+        for kind in ProxyKind::ALL {
             assert_eq!(
                 sql.contains(&format!("'{}'", kind.as_str())),
                 kind.is_covered_proxy(),
@@ -1177,6 +1362,127 @@ mod tests {
         );
         let explained: i64 = c.unresolved_by_reason.iter().map(|(_, n)| n).sum();
         assert_eq!(explained, c.covered_proxies - c.resolved_proxies);
+    }
+
+    fn seed(addr: &str, source: &str, label: Option<&str>, at: i64) -> SeedRow {
+        SeedRow {
+            address: addr.into(),
+            label: label.map(Into::into),
+            source: source.into(),
+            family: (source == "event").then(|| "impl:0xI".into()),
+            first_block: None,
+            discovered_at: at,
+        }
+    }
+
+    #[tokio::test]
+    async fn seeding_twice_keeps_one_row_and_a_curated_label_fills_a_gap() {
+        let s = mem().await;
+        s.add_seeds(&[seed("0xAa", "event", None, 1)])
+            .await
+            .unwrap();
+        s.add_seeds(&[seed("0xaA", "event", None, 2)])
+            .await
+            .unwrap();
+        s.add_seeds(&[seed("0xAA", "curated", Some("Aerodrome"), 3)])
+            .await
+            .unwrap();
+        let due = s.due_for_scan(0, None).await.unwrap();
+        assert_eq!(due.len(), 1, "addresses are one row whatever their case");
+        assert_eq!(due[0].1.as_deref(), Some("Aerodrome"));
+        assert_eq!(s.family_counts().await.unwrap().get("impl:0xI"), Some(&1));
+    }
+
+    /// Resumability rests on this: a scanned address is not due again until it goes stale, so a
+    /// killed run picks up where it stopped.
+    #[tokio::test]
+    async fn only_unscanned_or_stale_addresses_are_due_and_curated_ones_come_first() {
+        let s = mem().await;
+        s.add_seeds(&[
+            seed("0xE1", "event", None, 1),
+            seed("0xE2", "event", None, 2),
+            seed("0xC1", "curated", None, 3),
+        ])
+        .await
+        .unwrap();
+        let mut fresh = resolved("0xE1", "0xSafe", Some(2));
+        fresh.scanned_at = 1_000;
+        let mut stale = rec("0xE2", "transparent", None);
+        stale.scanned_at = 10;
+        s.upsert_many(&[fresh, stale]).await.unwrap();
+
+        let due: Vec<String> = s
+            .due_for_scan(500, None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(a, _)| a)
+            .collect();
+        assert_eq!(due, vec!["0xC1".to_string(), "0xE2".to_string()]);
+        assert_eq!(s.due_for_scan(500, Some(1)).await.unwrap().len(), 1);
+    }
+
+    /// The boot path classifies first and resolves after. The classified rows are fresh, but
+    /// nothing has tried to resolve them, so the resolving run must not skip them.
+    #[tokio::test]
+    async fn a_proxy_classified_but_never_resolved_is_due_however_fresh() {
+        let s = mem().await;
+        s.add_seeds(&[
+            seed("0xA", "curated", None, 1),
+            seed("0xB", "curated", None, 1),
+        ])
+        .await
+        .unwrap();
+        let mut classified_only = rec("0xA", "transparent", Some("0xAdmin"));
+        classified_only.scanned_at = 1_000;
+        let mut attempted = unresolved("0xB", "unrecognized_interface");
+        attempted.scanned_at = 1_000;
+        s.upsert_many(&[classified_only, attempted]).await.unwrap();
+        let due = s.due_for_scan(500, None).await.unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].0, "0xA");
+    }
+
+    #[tokio::test]
+    async fn a_cursor_reads_back_what_was_set() {
+        let s = mem().await;
+        assert_eq!(s.cursor("discover.next_window").await.unwrap(), None);
+        s.set_cursor("discover.next_window", 7).await.unwrap();
+        s.set_cursor("discover.next_window", 8).await.unwrap();
+        assert_eq!(s.cursor("discover.next_window").await.unwrap(), Some(8));
+    }
+
+    #[tokio::test]
+    async fn pages_cover_every_row_exactly_once() {
+        let s = mem().await;
+        let rows: Vec<_> = (0..7)
+            .map(|i| rec(&format!("0x{i:040x}"), "transparent", None))
+            .collect();
+        s.upsert_many(&rows).await.unwrap();
+        let mut seen = std::collections::HashSet::new();
+        for offset in [0, 3, 6] {
+            let (page, total) = s.proxies_page(true, 3, offset).await.unwrap();
+            assert_eq!(total, 7);
+            for p in page {
+                assert!(seen.insert(p.address), "a row appeared on two pages");
+            }
+        }
+        assert_eq!(seen.len(), 7);
+    }
+
+    #[tokio::test]
+    async fn coverage_says_how_the_index_was_sampled() {
+        let s = mem().await;
+        s.add_seeds(&[
+            seed("0xE1", "event", None, 1),
+            seed("0xC1", "curated", None, 2),
+        ])
+        .await
+        .unwrap();
+        s.set_cursor(DISCOVERY_CAP, 3).await.unwrap();
+        let c = s.coverage().await.unwrap();
+        assert_eq!(c.discovery_per_family, Some(3));
+        assert_eq!(c.seeded_by_source.len(), 2);
     }
 
     #[tokio::test]

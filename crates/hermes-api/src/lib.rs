@@ -35,11 +35,19 @@ impl<E: Into<anyhow::Error>> From<E> for ApiError {
 
 type ApiResult<T> = Result<T, ApiError>;
 
+/// Rows per page when a request does not say.
+pub const DEFAULT_PAGE: i64 = 100;
+/// The most rows one request can have. At the PRD's "good" bar of 5,000 proxies an unpaged
+/// `/proxies` is a multi-megabyte response, a failure no correctness test would ever catch.
+pub const MAX_PAGE: i64 = 1_000;
+
 #[derive(Debug, Deserialize)]
 pub struct ProxyQuery {
     /// `?all=true` includes EOAs, non-proxies and the ZeppelinOS pattern.
     #[serde(default)]
     pub all: bool,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,7 +58,12 @@ pub struct AuthorityQuery {
 
 #[derive(Serialize)]
 struct ProxyList {
+    /// Rows in this page.
     count: usize,
+    /// Rows in all pages.
+    total: i64,
+    limit: i64,
+    offset: i64,
     proxies: Vec<hermes_core::ProxyRecord>,
 }
 
@@ -86,9 +99,14 @@ async fn list_proxies(
     State(store): State<Store>,
     Query(q): Query<ProxyQuery>,
 ) -> ApiResult<Json<ProxyList>> {
-    let proxies = store.list_proxies(!q.all).await?;
+    let limit = q.limit.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
+    let offset = q.offset.unwrap_or(0).max(0);
+    let (proxies, total) = store.proxies_page(!q.all, limit, offset).await?;
     Ok(Json(ProxyList {
         count: proxies.len(),
+        total,
+        limit,
+        offset,
         proxies,
     }))
 }
@@ -283,6 +301,27 @@ mod tests {
             .unwrap();
         let v = body_json(r).await;
         assert_eq!(v["count"], 4);
+    }
+
+    #[tokio::test]
+    async fn proxies_come_in_pages_that_say_how_many_there_are_in_all() {
+        let app = app_with_rows().await;
+        let get = |uri: &'static str| {
+            app.clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        };
+        let first = body_json(get("/proxies?limit=2").await.unwrap()).await;
+        assert_eq!(first["count"], 2);
+        assert_eq!(first["total"], 3);
+        let rest = body_json(get("/proxies?limit=2&offset=2").await.unwrap()).await;
+        assert_eq!(rest["count"], 1);
+        assert_ne!(
+            first["proxies"][0]["address"],
+            rest["proxies"][0]["address"]
+        );
+        let silly = body_json(get("/proxies?limit=999999&offset=-5").await.unwrap()).await;
+        assert_eq!(silly["limit"], MAX_PAGE, "a page is never unbounded");
+        assert_eq!(silly["offset"], 0);
     }
 
     #[tokio::test]

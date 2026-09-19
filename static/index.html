@@ -84,6 +84,12 @@
   </div>
 
   <footer>
+    <p><strong>Sample.</strong> Addresses come from a hand-curated list plus chain-wide
+    discovery of ERC-1967 <code>Upgraded</code>, <code>BeaconUpgraded</code> and
+    <code>AdminChanged</code> events, read in windows spread evenly over Base's history and
+    capped at a few addresses per implementation, beacon or admin. It is a sample of Base, not
+    all of it: without the cap, mass-deployed clones of a handful of contracts would be most of
+    the index.</p>
     <p><strong>Coverage.</strong> Only ERC-1967 (transparent, UUPS, beacon) and EIP-1822 are
     detected. Contracts using inherited storage, eternal storage, Diamond/EIP-2535, or the
     pre-1967 <code>org.zeppelinos</code> slot are indexed but <em>not</em> counted as covered —
@@ -105,17 +111,18 @@ const root = r => r.terminal_authority
 const keys = r => r.terminal_authority
   ? (r.compromise_depth ?? `<span class="mono">unknown${r.depth_unknown_reason ? ' (' + r.depth_unknown_reason.replaceAll('_', ' ') + ')' : ''}</span>`)
   : '<span class="mono">—</span>';
-let data = [], sortKey = 'code_size', sortDir = -1;
+let data = [], totalRows = 0, sortKey = 'code_size', sortDir = -1;
 
 async function load(){
   const all = document.getElementById('all').checked;
   const rows = document.getElementById('rows');
   try{
     const [p, c] = await Promise.all([
-      fetch('/proxies' + (all ? '?all=true' : '')).then(r => r.json()),
+      fetch('/proxies?limit=1000' + (all ? '&all=true' : '')).then(r => r.json()),
       fetch('/coverage').then(r => r.json())
     ]);
     data = p.proxies || [];
+    totalRows = p.total ?? data.length;
     renderStats(c);
     render();
   }catch(e){
@@ -145,7 +152,8 @@ function render(){
     const x = a[sortKey] ?? '', y = b[sortKey] ?? '';
     return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y))) * sortDir;
   });
-  document.getElementById('count').textContent = `${rows.length} row${rows.length===1?'':'s'}`;
+  const of = totalRows > data.length ? ` (first ${data.length} of ${totalRows} loaded)` : '';
+  document.getElementById('count').textContent = `${rows.length} row${rows.length===1?'':'s'}${of}`;
   document.getElementById('rows').innerHTML = rows.map(r => `
     <tr>
       <td>${r.label ?? '<span class="mono">—</span>'}</td>

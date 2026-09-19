@@ -13,8 +13,10 @@
 //!   `org.zeppelinos` slot; WETH9 is not a proxy at all. They keep the coverage number in
 //!   `GET /coverage` honest instead of flattering.
 //!
-//! Curated seed sources replace this file once discovery is worth automating. Until then I
-//! extend it by hand — `scripts/discover_seed.py` regenerates candidates.
+//! This list is a bootstrap, not the index. Every scan inserts it into the `seed` table as
+//! `curated`, ahead of anything else, and it is the only place labels come from. The rest of
+//! the index comes from `hermes discover`, which finds proxies chain-wide by their ERC-1967
+//! events, so growing the index no longer means editing this file.
 
 /// One seeded address. `label` is hand-written and advisory; it is never derived on-chain.
 pub struct SeedEntry {

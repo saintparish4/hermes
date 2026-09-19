@@ -9,13 +9,15 @@ use alloy::primitives::Address;
 use alloy::providers::Provider;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
-use hermes_core::store::Coverage;
-use hermes_core::{Chain, Store};
+use hermes_core::store::{Coverage, DISCOVERY_CAP};
+use hermes_core::{Chain, SeedRow, Store};
+use hermes_scan::discover::{self, Discoverer};
 use hermes_scan::verify::{differences, load_table};
 use hermes_scan::{
-    AuthorityScanner, ChainRpc, Endpoint, Fixture, LiveRpc, RecordingRpc, SEED, ScanCounts,
-    Scanner, Target, scan_and_resolve,
+    AuthorityScanner, ChainRpc, Endpoint, Fixture, LiveRpc, RecordingRpc, RunReport, SEED, Scanner,
+    Target, scan_and_resolve, scan_into,
 };
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -92,16 +94,44 @@ impl Endpoints {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Probe the seed list and write classifications to the database.
+    /// Scan every seeded address that is due, resolve what it finds, and write it in batches.
     Scan {
         #[command(flatten)]
         endpoints: Endpoints,
         /// Concurrent in-flight readers. 3 is what the public Base endpoint tolerates.
         #[arg(long, env = "HERMES_CONCURRENCY", default_value_t = 3)]
         concurrency: usize,
-        /// Scan only the first N seed entries.
+        /// Scan at most this many due addresses in this run.
         #[arg(long)]
-        limit: Option<usize>,
+        limit: Option<i64>,
+        /// Skip addresses scanned within this many hours. This is what makes a killed run
+        /// resume where it stopped instead of starting over.
+        #[arg(long, default_value_t = 20)]
+        fresh_hours: i64,
+        /// Addresses per batch. Each batch is written before the next begins.
+        #[arg(long, default_value_t = 50)]
+        batch: usize,
+        /// Classify only and resolve nothing: the quick pass a fresh deployment makes before it
+        /// opens its port.
+        #[arg(long)]
+        classify_only: bool,
+    },
+    /// Find proxies chain-wide from their ERC-1967 events and add them to the seed.
+    Discover {
+        #[command(flatten)]
+        endpoints: Endpoints,
+        /// Blocks between the starts of consecutive windows.
+        #[arg(long, default_value_t = 500_000)]
+        stride: u64,
+        /// Blocks per window. The public endpoint refuses ten thousand; one thousand is safe.
+        #[arg(long, default_value_t = 1_000)]
+        window: u64,
+        /// The most addresses admitted per implementation, beacon or admin.
+        #[arg(long, default_value_t = 3)]
+        per_family: i64,
+        /// Stop after this many windows.
+        #[arg(long)]
+        max_windows: Option<usize>,
     },
     /// Run the pipeline for one address at a pinned block and save every answer the chain gave
     /// as a replayable fixture. Prints what Hermes concluded, which is never the expectation:
@@ -158,45 +188,47 @@ async fn open(url: &str) -> anyhow::Result<Store> {
         .with_context(|| format!("opening database at {url}"))
 }
 
-fn seed_targets(limit: Option<usize>) -> anyhow::Result<Vec<Target>> {
-    let entries = match limit {
-        Some(n) => &SEED[..n.min(SEED.len())],
-        None => SEED,
-    };
-    entries
-        .iter()
-        .map(|e| {
-            Ok(Target {
-                address: e.address.parse::<Address>()?,
-                label: e.label.map(str::to_string),
-            })
+/// The hand-curated list, as seed rows. It bootstraps every database, and it is the only
+/// source of labels.
+fn curated_seeds(discovered_at: i64) -> Vec<SeedRow> {
+    SEED.iter()
+        .map(|e| SeedRow {
+            address: e.address.to_string(),
+            label: e.label.map(str::to_string),
+            source: "curated".into(),
+            family: None,
+            first_block: None,
+            discovered_at,
         })
-        .collect::<anyhow::Result<_>>()
-        .context("seed list contains a malformed address")
+        .collect()
 }
 
-fn report(counts: ScanCounts, written: u64, cov: &Coverage) {
+fn report(run: RunReport, cov: &Coverage) {
+    let counts = run.counts;
     tracing::info!(
         ok = counts.ok,
         failed = counts.failed,
         rereads = counts.rereads,
         unconfirmed = counts.unconfirmed,
         resolved = counts.resolved,
-        written,
+        written = run.written,
+        batches = run.batches,
         "scan complete"
     );
     println!(
-        "scanned {} ok / {} failed / {} unconfirmed ({} needed a confirming re-read)\n\
-         stored {written} rows\n\
-         covered proxies: {}/{}\n\
-         resolved to an authority: {} across {} distinct roots",
+        "this run: {} ok / {} failed / {} unconfirmed ({} needed a confirming re-read), \
+         {} resolved, {} rows written in {} batches\n\
+         store: {} covered proxies of {} scanned, {} resolved across {} distinct roots",
         counts.ok,
         counts.failed,
         counts.unconfirmed,
         counts.rereads,
+        counts.resolved,
+        run.written,
+        run.batches,
         cov.covered_proxies,
         cov.total_scanned,
-        counts.resolved,
+        cov.resolved_proxies,
         cov.distinct_authorities
     );
     for (kind, n) in &cov.by_kind {
@@ -204,26 +236,143 @@ fn report(counts: ScanCounts, written: u64, cov: &Coverage) {
     }
 }
 
-async fn scan(
-    database_url: &str,
-    endpoints: &Endpoints,
+/// How a scan run is shaped.
+struct ScanPlan {
     concurrency: usize,
-    limit: Option<usize>,
-) -> anyhow::Result<()> {
-    let store = open(database_url).await?;
-    let targets = seed_targets(limit)?;
-    tracing::info!(count = targets.len(), rpc = %endpoints.rpc_url, concurrency, "starting scan");
-    let (scanner, authorities) = endpoints.live(concurrency).await?;
-    let scanned = scan_and_resolve(&scanner, &authorities, &targets, now()).await;
+    limit: Option<i64>,
+    fresh_hours: i64,
+    batch: usize,
+    classify_only: bool,
+}
 
-    let written = store.upsert_many(&scanned.records).await?;
+async fn scan(database_url: &str, endpoints: &Endpoints, plan: ScanPlan) -> anyhow::Result<()> {
+    let store = open(database_url).await?;
+    let started = now();
+    store.add_seeds(&curated_seeds(started)).await?;
+    let targets: Vec<Target> = store
+        .due_for_scan(started - plan.fresh_hours * 3600, plan.limit)
+        .await?
+        .into_iter()
+        .map(|(address, label)| {
+            Ok(Target {
+                address: address.parse::<Address>()?,
+                label,
+            })
+        })
+        .collect::<anyhow::Result<_>>()
+        .context("the seed table holds a malformed address")?;
+
+    tracing::info!(
+        due = targets.len(),
+        rpc = %endpoints.rpc_url,
+        concurrency = plan.concurrency,
+        classify_only = plan.classify_only,
+        "starting scan"
+    );
+    let (scanner, authorities) = endpoints.live(plan.concurrency).await?;
+    let resolver = (!plan.classify_only).then_some(&authorities);
+    let run = scan_into(&store, &scanner, resolver, &targets, plan.batch, started).await?;
+
     let cov = store.coverage().await?;
-    report(scanned.counts, written, &cov);
-    // Fail loudly if a scan produced nothing — a silently empty scan that still serves a page
+    report(run, &cov);
+    // Fail loudly if the store holds nothing — a silently empty scan that still serves a page
     // is the failure mode that makes a public dashboard lie.
     if cov.covered_proxies == 0 {
-        anyhow::bail!("scan stored no covered proxies; refusing to report success");
+        anyhow::bail!("the store holds no covered proxies; refusing to report success");
     }
+    Ok(())
+}
+
+/// A window cursor only means something for the stride and size it was counted in.
+async fn discovery_start(store: &Store, stride: u64, window: u64) -> anyhow::Result<u64> {
+    let same_grid = store.cursor(discover::STRIDE).await? == Some(stride as i64)
+        && store.cursor(discover::WINDOW).await? == Some(window as i64);
+    if !same_grid {
+        store.set_cursor(discover::STRIDE, stride as i64).await?;
+        store.set_cursor(discover::WINDOW, window as i64).await?;
+        store.set_cursor(discover::NEXT_WINDOW, 0).await?;
+    }
+    Ok(store.cursor(discover::NEXT_WINDOW).await?.unwrap_or(0) as u64)
+}
+
+/// Read one window, seed what it admits, and move the cursor past it. The cursor moves only
+/// after the seeds are written, so a run killed between the two re-reads the window rather than
+/// skipping it; admitting is idempotent, so re-reading costs nothing but the request.
+async fn read_window(
+    store: &Store,
+    reader: &Discoverer,
+    w: &discover::Window,
+    per_family: i64,
+    (counts, seeded): &mut (HashMap<String, i64>, HashSet<String>),
+) -> anyhow::Result<usize> {
+    let logs = reader.logs(w.from, w.to).await?;
+    let admitted = discover::admit(
+        logs.iter().filter_map(discover::sighting),
+        per_family,
+        counts,
+        seeded,
+    );
+    let rows: Vec<SeedRow> = admitted
+        .iter()
+        .map(|s| SeedRow {
+            address: s.address.to_checksum(None),
+            label: None,
+            source: "event".into(),
+            family: Some(s.family.clone()),
+            first_block: s.block.map(|b| b as i64),
+            discovered_at: now(),
+        })
+        .collect();
+    store.add_seeds(&rows).await?;
+    store
+        .set_cursor(discover::NEXT_WINDOW, w.index as i64 + 1)
+        .await?;
+    tracing::info!(
+        window = w.index,
+        from = w.from,
+        logs = logs.len(),
+        admitted = rows.len(),
+        "window read"
+    );
+    Ok(rows.len())
+}
+
+struct DiscoverPlan {
+    stride: u64,
+    window: u64,
+    per_family: i64,
+    max_windows: Option<usize>,
+}
+
+async fn discover(
+    database_url: &str,
+    endpoints: &Endpoints,
+    plan: DiscoverPlan,
+) -> anyhow::Result<()> {
+    let store = open(database_url).await?;
+    let provider = hermes_scan::connect(&endpoints.rpc_url).await?;
+    let head = provider.get_block_number().await?;
+    let start = discovery_start(&store, plan.stride, plan.window).await?;
+    store.set_cursor(DISCOVERY_CAP, plan.per_family).await?;
+
+    let mut windows = discover::windows(start, plan.stride, plan.window, head);
+    windows.truncate(plan.max_windows.unwrap_or(usize::MAX));
+    let mut tally = (
+        store.family_counts().await?,
+        store.seeded_addresses().await?,
+    );
+    let reader = Discoverer::new(provider, Duration::from_millis(endpoints.call_interval_ms));
+    let mut admitted_total = 0;
+
+    for w in &windows {
+        admitted_total += read_window(&store, &reader, w, plan.per_family, &mut tally).await?;
+    }
+    println!(
+        "read {} windows up to block {head}; admitted {admitted_total} new addresses \
+         (at most {} per family)",
+        windows.len(),
+        plan.per_family
+    );
     Ok(())
 }
 
@@ -333,7 +482,34 @@ async fn main() -> anyhow::Result<()> {
             endpoints,
             concurrency,
             limit,
-        } => scan(&cli.database_url, &endpoints, concurrency, limit).await,
+            fresh_hours,
+            batch,
+            classify_only,
+        } => {
+            let plan = ScanPlan {
+                concurrency,
+                limit,
+                fresh_hours,
+                batch,
+                classify_only,
+            };
+            scan(&cli.database_url, &endpoints, plan).await
+        }
+        Command::Discover {
+            endpoints,
+            stride,
+            window,
+            per_family,
+            max_windows,
+        } => {
+            let plan = DiscoverPlan {
+                stride,
+                window,
+                per_family,
+                max_windows,
+            };
+            discover(&cli.database_url, &endpoints, plan).await
+        }
         Command::Record {
             address,
             name,

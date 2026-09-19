@@ -40,7 +40,7 @@ fn selector(signature: &str) -> [u8; 4] {
 /// `Address::from_word` would silently take the low 20 bytes. A word with non-zero upper
 /// bytes was not written by any contract I recognize, and truncating it fabricates an
 /// authority out of whatever noise happened to be there.
-fn word_to_address_strict(word: &[u8]) -> Option<Address> {
+pub(crate) fn word_to_address_strict(word: &[u8]) -> Option<Address> {
     if word.len() != 32 || word[..12].iter().any(|b| *b != 0) {
         return None;
     }
@@ -169,6 +169,11 @@ pub struct AuthorityScanner {
     base: Endpoint,
     ethereum: Endpoint,
     concurrency: usize,
+    /// Every settled answer this scanner has had, so a run that resolves in batches walks a
+    /// shared ProxyAdmin or Safe once rather than once per batch. Only settled answers are kept:
+    /// a node that would not answer gets asked again next time.
+    probes: Arc<std::sync::Mutex<HashMap<Node, AuthorityProbe>>>,
+    uups: Arc<std::sync::Mutex<HashMap<Address, bool>>>,
 }
 
 impl AuthorityScanner {
@@ -177,7 +182,30 @@ impl AuthorityScanner {
             base,
             ethereum,
             concurrency,
+            probes: Arc::default(),
+            uups: Arc::default(),
         }
+    }
+
+    fn remembered(&self, node: Node) -> Option<AuthorityProbe> {
+        self.probes
+            .lock()
+            .expect("probe cache poisoned")
+            .get(&node)
+            .cloned()
+    }
+
+    /// `probe`, answered from memory when this scanner has already settled `node`.
+    async fn probe_once(&self, node: Node) -> Option<AuthorityProbe> {
+        if let Some(probe) = self.remembered(node) {
+            return Some(probe);
+        }
+        let probe = self.probe(node).await?;
+        self.probes
+            .lock()
+            .expect("probe cache poisoned")
+            .insert(node, probe.clone());
+        Some(probe)
     }
 
     async fn rpc(&self, chain: Chain) -> &dyn ChainRpc {
@@ -310,11 +338,24 @@ impl AuthorityScanner {
     /// the implementation directly, because OpenZeppelin marks it `notDelegated` and it
     /// reverts through the proxy. `None` when the node would not tell me.
     pub async fn is_uups(&self, implementation: Address) -> Option<bool> {
+        if let Some(known) = self
+            .uups
+            .lock()
+            .expect("uups cache poisoned")
+            .get(&implementation)
+        {
+            return Some(*known);
+        }
         let answer = self
             .call(Node::base(implementation), selector("proxiableUUID()"))
             .await
             .settled()?;
-        Some(answer.is_some_and(|b| b.as_ref() == IMPL_SLOT.as_slice()))
+        let is_uups = answer.is_some_and(|b| b.as_ref() == IMPL_SLOT.as_slice());
+        self.uups
+            .lock()
+            .expect("uups cache poisoned")
+            .insert(implementation, is_uups);
+        Some(is_uups)
     }
 
     /// Gather every probe reachable from `roots` within the depth limit.
@@ -332,7 +373,7 @@ impl AuthorityScanner {
                 break;
             }
             let level: Vec<(Node, AuthorityProbe)> = stream::iter(frontier.clone())
-                .map(|n| async move { self.probe(n).await.map(|p| (n, p)) })
+                .map(|n| async move { self.probe_once(n).await.map(|p| (n, p)) })
                 .buffer_unordered(self.concurrency)
                 .collect::<Vec<_>>()
                 .await

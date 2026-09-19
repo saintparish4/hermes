@@ -47,6 +47,24 @@ pub enum ProxyKind {
 }
 
 impl ProxyKind {
+    pub const ALL: [ProxyKind; 8] = [
+        Self::Transparent,
+        Self::Uups,
+        Self::Beacon,
+        Self::Eip1822,
+        Self::AdminOnly,
+        Self::ZeppelinOs,
+        Self::NotUpgradeable,
+        Self::Eoa,
+    ];
+
+    /// Whether a stored kind string names a covered proxy.
+    pub fn is_covered_str(kind: &str) -> bool {
+        Self::ALL
+            .iter()
+            .any(|k| k.as_str() == kind && k.is_covered_proxy())
+    }
+
     /// Whether v1 claims coverage of this pattern. Drives the coverage number, so it decides
     /// how honest that number is.
     pub fn is_covered_proxy(self) -> bool {

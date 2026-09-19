@@ -39,7 +39,12 @@ npm install
 cargo run -p hermes-cli -- scan && cargo run -p hermes-cli -- serve
 ```
 
-Then open [http://localhost:8080](http://localhost:8080). The scan probes the seeded addresses against the public Base endpoint and writes `hermes.db`; the server reads it. Neither step needs an API key.
+Then open [http://localhost:8080](http://localhost:8080). The scan probes the 62 hand-curated addresses against the public Base endpoint and writes `hermes.db`; the server reads it. Neither step needs an API key. To index a real share of Base, discover first:
+
+```bash
+cargo run -p hermes-cli -- discover   # ~2 minutes: finds proxies chain-wide from their ERC-1967 events
+cargo run -p hermes-cli -- scan       # then scans everything seeded; long, resumable
+```
 
 ## Development:
 
@@ -55,9 +60,13 @@ Open [http://localhost:3000](http://localhost:3000).
 **Backend:**
 
 ```bash
-cargo run -p hermes-cli -- scan --concurrency 3   # 3 is what the public Base endpoint tolerates
+cargo run -p hermes-cli -- discover                 # add proxies found by event to the seed table
+cargo run -p hermes-cli -- scan --concurrency 3     # 3 is what the public Base endpoint tolerates
+cargo run -p hermes-cli -- scan --classify-only     # slots only, no resolution: seconds, not minutes
 cargo run -p hermes-cli -- serve --port 8080
 ```
+
+`hermes scan` works through whatever is due in batches of 50, writing each batch before starting the next. An address scanned in the last 20 hours (`--fresh-hours`) is not due, so a scan killed anywhere resumes where it stopped instead of starting over. A covered proxy that has never had resolution attempted is always due. Each batch has to pass a canary first: if more than a fifth of the proxies it already knew as covered suddenly come back as something else, the run stops and writes nothing from that batch. An endpoint failing is far likelier than a fifth of a batch being re-pointed at once.
 
 `hermes scan` fails loudly rather than reporting success when a run stores zero covered proxies — a scan that quietly stores nothing, followed by a server that cheerfully serves an empty table, is how a public dashboard starts lying.
 
@@ -161,6 +170,15 @@ hermes/
 └── Cargo.toml           # workspace root
 ```
 
+### Where the addresses come from
+
+Two sources feed one `seed` table:
+
+- **Curated** — 62 hand-picked addresses (`crates/hermes-scan/src/seed.rs`): the OP Stack predeploys, a sample of live proxies, and USDC, EURC and WETH9, which are there *because* Hermes cannot classify them. They bootstrap every database and are the only source of labels.
+- **Discovered** — `hermes discover` pages `eth_getLogs` for the three ERC-1967 events (`Upgraded`, `BeaconUpgraded`, `AdminChanged`), so proxies are found by the same standard the slot reads classify them by. The public endpoint caps a log response by size (1,000 blocks is fine, 10,000 is HTTP 413), so it reads 1,000-block windows at fixed positions every 500,000 blocks across Base's whole history. Fixed positions make it resumable (a cursor names the next window) and incremental (new windows come into range as the chain grows). No API key, no Basescan export.
+
+**The index is a sample, and this is how it is drawn.** Recent history is mostly clones: in one 1,000-block window, 248 of 374 upgrades pointed at one implementation. Admitted unfiltered, the index would be a few contracts copied hundreds of times, each owned by whoever deployed that copy. So each *family* — one implementation, beacon or admin — admits at most three addresses (`--per-family`). Measured on 2026-09-19: 104 windows, 903 addresses admitted from 555 families. `/coverage` reports the cap it was drawn with. The consequence to keep in mind: "one authority controls N proxies" is a count within this sample, and for a clone family it is at most three.
+
 ### Proxy discovery
 
 ERC-1967 standardizes three storage slots, each computed as `bytes32(uint256(keccak256(name)) - 1)`, and each readable via a single `eth_getStorageAt` call:
@@ -209,7 +227,9 @@ Nothing below is implemented yet; it is the v1.1 design. Per proxy, `direct_cust
 Built today:
 
 ```
-hand-curated seed (62 addresses)
+hand-curated seed (62) + eth_getLogs for ERC-1967 events (windows across history, ≤3 per family)
+      ↓
+seed table → due for scan (not scanned in 20h, or never resolved) → batches of 50
       ↓
 eth_getStorageAt × 5 slots + eth_getCode → proxy classification → admin address
       ↓
@@ -217,12 +237,12 @@ upgrade entry per proxy: admin slot, beacon, or proxiableUUID()-confirmed UUPS o
       ↓
 recursive authority resolution on Base, crossing to Ethereum through L1→L2 aliases
       ↓
-GROUP BY (terminal_authority, terminal_chain)
+canary per batch → SQLite, one transaction per batch
       ↓
-SQLite → JSON API + static page
+GROUP BY (terminal_authority, terminal_chain) → JSON API + static page
 ```
 
-Planned: chain-wide proxy discovery in place of the hand-curated seed, then Multicall3 balance reads and DeFiLlama prices for `direct_custody` and `authority_var`.
+Planned: Multicall3 balance reads and DeFiLlama prices for `direct_custody` and `authority_var`.
 
 ### API
 
@@ -230,9 +250,9 @@ Served today:
 
 - `GET /authorities` — resolved roots ranked by how many proxies each controls, each with its `chain`, `kind`, `compromise_depth`, `timelock_seconds` and `confidence`. Unresolved proxies are left out rather than bucketed under a placeholder; `/coverage` counts them.
 - `GET /authorities/{address}` — one authority and every proxy it controls. If the same address is a root on both Base and Ethereum, pass `?chain=base` or `?chain=ethereum`; without it the answer is a 409 naming both, not whichever row sorts first.
-- `GET /proxies` — covered proxies with their classification and resolved root (`?all=true` includes non-proxies).
+- `GET /proxies` — covered proxies with their classification and resolved root, paged: `?limit=` (default 100, at most 1,000) and `?offset=`, with `total` in the response. `?all=true` includes non-proxies.
 - `GET /proxies/{address}` — one proxy.
-- `GET /coverage` — scan counts, resolved count, distinct roots, last scan time, and the gap explained: `unresolved_by_reason`, `depth_unknown_by_reason`, and `resolved_by_path`.
+- `GET /coverage` — scan counts, resolved count, distinct roots, last scan time, the gap explained (`unresolved_by_reason`, `depth_unknown_by_reason`, `resolved_by_path`), and how the index was sampled (`seeded_by_source`, `discovery_per_family`).
 - `GET /healthz` — plain `ok`, never touches SQLite.
 
 Planned: ranking by `authority_var` once exposure exists, and `GET /methodology`.
@@ -253,10 +273,10 @@ Rust compiler                 next build (output: 'export')
 
 The container refreshes on a loop behind the server, writing to the same SQLite file the API reads from. Two boot paths, depending on whether there is anything to serve:
 
-- **Database empty** — scan first, then open the port. Serving an empty table is worse than making the first visitor wait, and this is the state a first deploy starts in, or every deploy if the volume is ever missing.
+- **Database empty** — classify the 62 curated addresses first (about twenty seconds, no resolution), then open the port. Serving an empty table is worse than making the first visitor wait, and this is the state a first deploy starts in, or every deploy if the volume is ever missing. A full first scan would not fit: resolution is paced to what the public endpoint tolerates and reads Ethereum as well as Base, so it takes minutes, far past the 60-second health check.
 - **Database populated** — run `hermes migrate` once, alone, then open the port immediately and refresh in the background. `Store::open` is safe to race, but a deploy that adds a column is exactly when the scan and the server would otherwise both be changing the schema.
 
-Refreshes never run in front of the port. A scan that has to finish before serving starts leaves the health check unanswered for its whole duration, which is survivable at 62 seeded addresses and stops being survivable as the seed grows.
+Either way, the background loop then runs `hermes discover` and a full `hermes scan` straight away, and every `HERMES_SCAN_INTERVAL` after that. Refreshes never run in front of the port. A redeploy that kills a scan loses at most one batch; the next boot's scan skips everything written in the last twenty hours.
 
 ### Railway
 

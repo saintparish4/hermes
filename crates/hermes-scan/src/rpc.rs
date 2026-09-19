@@ -113,6 +113,21 @@ pub struct ChainReads {
     pub call: BTreeMap<Address, BTreeMap<Bytes, CallRead>>,
 }
 
+impl ChainReads {
+    /// Fold another recording's answers into this one. Recordings made at the same blocks agree
+    /// wherever they overlap, which is what makes several single-address fixtures replayable as
+    /// one node.
+    pub fn merge(&mut self, other: ChainReads) {
+        for (address, slots) in other.storage {
+            self.storage.entry(address).or_default().extend(slots);
+        }
+        self.code.extend(other.code);
+        for (address, calls) in other.call {
+            self.call.entry(address).or_default().extend(calls);
+        }
+    }
+}
+
 /// A live reader that keeps every settled answer it passes through.
 pub struct RecordingRpc {
     inner: LiveRpc,

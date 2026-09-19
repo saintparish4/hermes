@@ -7,9 +7,10 @@
 use crate::probe::{ProbeOutcome, Scanner};
 use crate::resolve::AuthorityScanner;
 use alloy::primitives::Address;
+use hermes_core::canary;
 use hermes_core::store::checksum;
 use hermes_core::{
-    Classified, Node, ProxyRecord, Resolution, UpgradeEntry, resolve, upgrade_entry,
+    Classified, Node, ProxyRecord, Resolution, Store, UpgradeEntry, resolve, upgrade_entry,
     uups_implementation,
 };
 use std::collections::{HashMap, HashSet};
@@ -44,6 +45,32 @@ struct Found {
     classified: Classified,
 }
 
+impl ScanCounts {
+    fn add(&mut self, other: ScanCounts) {
+        self.ok += other.ok;
+        self.failed += other.failed;
+        self.rereads += other.rereads;
+        self.unconfirmed += other.unconfirmed;
+        self.resolved += other.resolved;
+    }
+}
+
+async fn classify_targets(
+    scanner: &Scanner,
+    targets: &[Target],
+    scanned_at: i64,
+) -> (Vec<Found>, ScanCounts) {
+    let results = scanner
+        .scan(targets.iter().map(|t| t.address).collect())
+        .await;
+    let mut counts = ScanCounts::default();
+    let found = results
+        .iter()
+        .filter_map(|(addr, outcome)| record(*addr, outcome, targets, scanned_at, &mut counts))
+        .collect();
+    (found, counts)
+}
+
 /// Scan `targets` and resolve what they found.
 pub async fn scan_and_resolve(
     scanner: &Scanner,
@@ -51,19 +78,70 @@ pub async fn scan_and_resolve(
     targets: &[Target],
     scanned_at: i64,
 ) -> Scanned {
-    let results = scanner
-        .scan(targets.iter().map(|t| t.address).collect())
-        .await;
-    let mut counts = ScanCounts::default();
-    let mut found: Vec<Found> = results
-        .iter()
-        .filter_map(|(addr, outcome)| record(*addr, outcome, targets, scanned_at, &mut counts))
-        .collect();
+    let (mut found, mut counts) = classify_targets(scanner, targets, scanned_at).await;
     counts.resolved = resolve_authorities(authorities, &mut found).await;
     Scanned {
         records: found.into_iter().map(|f| f.record).collect(),
         counts,
     }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct RunReport {
+    pub counts: ScanCounts,
+    pub written: u64,
+    pub batches: usize,
+}
+
+/// Scan `targets` into `store` a batch at a time.
+///
+/// Each batch is written before the next one starts, so a run killed anywhere loses at most one
+/// batch, and the next run's `due_for_scan` carries on from there. Each batch also has to get
+/// past the canary first: one in which too many known proxies suddenly stop being covered is an
+/// endpoint failing, and the run stops rather than publish it. `authorities` of `None` only
+/// classifies, which is the quick first pass a fresh deployment makes before opening its port.
+pub async fn scan_into(
+    store: &Store,
+    scanner: &Scanner,
+    authorities: Option<&AuthorityScanner>,
+    targets: &[Target],
+    batch: usize,
+    scanned_at: i64,
+) -> anyhow::Result<RunReport> {
+    let covered_before = store.covered_addresses().await?;
+    let mut report = RunReport::default();
+    for chunk in targets.chunks(batch.max(1)) {
+        let scanned = match authorities {
+            Some(authorities) => scan_and_resolve(scanner, authorities, chunk, scanned_at).await,
+            None => {
+                let (found, counts) = classify_targets(scanner, chunk, scanned_at).await;
+                Scanned {
+                    records: found.into_iter().map(|f| f.record).collect(),
+                    counts,
+                }
+            }
+        };
+        let canary = canary::check(&covered_before, &scanned.records);
+        if canary.tripped() {
+            anyhow::bail!(
+                "refusing to publish a batch in which {} of {} known proxies stopped being \
+                 covered; an endpoint failing is likelier than the chain changing, and nothing \
+                 from this batch was written",
+                canary.lost,
+                canary.known
+            );
+        }
+        report.written += store.upsert_many(&scanned.records).await?;
+        report.counts.add(scanned.counts);
+        report.batches += 1;
+        tracing::info!(
+            batch = report.batches,
+            scanned = (report.batches * batch).min(targets.len()),
+            of = targets.len(),
+            "batch written"
+        );
+    }
+    Ok(report)
 }
 
 /// The row one probe earns, or `None` when it earned nothing publishable.

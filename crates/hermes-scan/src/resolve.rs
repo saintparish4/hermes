@@ -67,7 +67,11 @@ fn decode_address_array(data: &[u8]) -> Option<Vec<Address>> {
     }
     let end = len_at.checked_add(len.checked_mul(32)?)?;
     let body = data.get(len_at..end)?;
-    body.chunks_exact(32).map(word_to_address_strict).collect()
+    body.as_chunks::<32>()
+        .0
+        .iter()
+        .map(|word| word_to_address_strict(word))
+        .collect()
 }
 
 /// How many times to re-ask before accepting that I will not find out.

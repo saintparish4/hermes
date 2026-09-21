@@ -16,6 +16,7 @@ row is what the next deploy will serve; it is not live until it is deployed.
 | 2026-09-19 | Step 1: L1→L2 aliasing | local | 62 | 58 | 28 | 9 | 5 (5) | Safe on Ethereum, 20 proxies, 11 keys |
 | 2026-09-19 | Step 3: UUPS, beacon, reasons | local | 62 | 58 | **43** | 16 | 9 (11) | Safe on Ethereum, 20 proxies, 11 keys |
 | 2026-09-20 | Step 4: chain-wide index | local | **964** | **939** | **531** | **206** | 163 (384) | EOA on Base, 65 proxies, 1 key |
+| 2026-09-20 | Step 4 deployed (`9d1ef16`) | live | 964 | 939 | 531 | 206 | 163 (384) | EOA on Base, 65 proxies, 1 key |
 
 Step 3 breakdown: resolved by path, admin slot 28, UUPS `owner()` 9 (all Medium), beacon 6.
 Unresolved by reason: `unrecognized_interface` 14 (7 under `0x31e9…0c17`, 5 UUPS without an
@@ -48,7 +49,7 @@ every 500,000 blocks and caps each family at 3, so every count here is within th
 | Bar | State |
 |---|---|
 | Deployed, public, no login | Yes |
-| ≥500 proxies indexed and ranked | **Yes: 939 covered** locally (2026-09-20). Live still serves 58 until this is deployed |
+| ≥500 proxies indexed and ranked | **Yes: 939 covered**, live since 2026-09-20 |
 | Ten protocols hand-verified | **Yes: 13**, by shape, replayed in CI ([docs/verification.md](verification.md)). The human "open every link" pass is still Sharif's |
 | README a stranger can follow | Yes, and the headline claim is now correct |
 | One published write-up | No |
@@ -102,3 +103,16 @@ every 500,000 blocks and caps each family at 3, so every count here is within th
   written; the resumed pass read the cursor and wrote the remaining 864 with 0 failures. The
   same run had been lost earlier that day because it wrote to `/tmp` and the machine
   rebooted — the resumability is only worth what the filesystem under it is worth.
+- **2026-09-20: the first deploy since 2026-08-31 retracted before it re-resolved.** The
+  `terminal_chain` migration's `on_add` hook NULLed all 28 resolutions made by the
+  pre-aliasing resolver, so the live site served 58 covered / 0 resolved until the background
+  scan re-derived each root with its chain. Serving nothing for two hours was preferred to
+  serving answers already known to be wrong. The service had not redeployed in three weeks
+  because it was deployed once from the CLI and never connected to the repository.
+- **2026-09-20: the live scan reproduced the local one to the row**: 964 / 939 / 531 / 206,
+  the same kind mix, the same reasons and the same top of the ranking, hours apart and from a
+  different network.
+- **2026-09-20: `0xFFfF…FfFF` is ranked as a one-key EOA.** It is the `owner()` of one UUPS
+  proxy (`0xF1CC…1D41`, Medium). It has no code, so by the probe rules it is an EOA, but it is
+  a sentinel no one is known to hold a key for. Hermes reports what the chain says and does
+  not infer "renounced"; whether well-known sentinels deserve their own kind is open.

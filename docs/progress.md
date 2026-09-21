@@ -15,11 +15,23 @@ row is what the next deploy will serve; it is not live until it is deployed.
 | 2026-09-16 | Baseline (`0202bec`) | live | 62 | 58 | 28 | 9 | 6 (25), **wrong** | "EOA", 20 proxies, 1 key, **wrong** |
 | 2026-09-19 | Step 1: L1→L2 aliasing | local | 62 | 58 | 28 | 9 | 5 (5) | Safe on Ethereum, 20 proxies, 11 keys |
 | 2026-09-19 | Step 3: UUPS, beacon, reasons | local | 62 | 58 | **43** | 16 | 9 (11) | Safe on Ethereum, 20 proxies, 11 keys |
+| 2026-09-20 | Step 4: chain-wide index | local | **964** | **939** | **531** | **206** | 163 (384) | EOA on Base, 65 proxies, 1 key |
 
 Step 3 breakdown: resolved by path, admin slot 28, UUPS `owner()` 9 (all Medium), beacon 6.
 Unresolved by reason: `unrecognized_interface` 14 (7 under `0x31e9…0c17`, 5 UUPS without an
 `owner()`, 2 beacons whose controller answers nothing), `uups_unconfirmed` 1. Second-largest
 root: a 2-of-3 Safe on Base behind six beacon proxies.
+
+Step 4 breakdown: 903 addresses from ERC-1967 event discovery plus the 61 curated seeds, at
+most 3 per implementation/beacon/admin family. Covered by kind: UUPS 472, beacon 259,
+transparent 206, `admin_only` 2. Resolved by path: beacon 199, admin slot 171, UUPS `owner()`
+161. Unresolved by reason: `unrecognized_interface` 345, `uups_unconfirmed` 63. Confidence of
+the 531 resolved: High 348, Medium 183. Of the 206 roots, 161 are EOAs, 39 Safes, 6 timelocks;
+16 have an unknown key count (50 proxy rows, all `owners_unknown`). Single-key roots split
+56 roots / 246 proxies at High confidence and 107 roots / 138 proxies at Medium.
+
+The index is a sample, not a census: discovery reads 1,000-block windows at fixed positions
+every 500,000 blocks and caps each family at 3, so every count here is within that sample.
 
 ## Engineering
 
@@ -29,13 +41,14 @@ root: a 2-of-3 Safe on Base behind six beacon proxies.
 | 2026-09-19 | Step 1 | 102 | unchanged (step 2 fixes it) | 2m54s | Resolution paced at 1 call/s to Base; unpaced runs resolved 25 or 28 depending on the rate limiter |
 | 2026-09-19 | Step 2: reliable gate, verified table | 114 | **0/200** (20/60 with the old code put back) | 2m54s | 11 hand-verified addresses replayed offline in 2.8s; live `hermes verify` 11/11 in 1m39s |
 | 2026-09-19 | Step 3: UUPS and beacon paths | 127 | 0 | 6m37s | 13 verified rows; more nodes probed at 1 call/s, so the scan more than doubled |
+| 2026-09-20 | Step 4: chain-wide index | **148** | 0 | 2h15m31s (964 addresses) | Discovery 2m07s for 104 windows. Resumability re-proven: SIGKILL at 912s left 100 rows durable, the resumed pass wrote the remaining 864 in 18 batches, 0 failed, 0 unconfirmed, 21 confirming re-reads |
 
 ## PRD §8 minimum bar
 
 | Bar | State |
 |---|---|
 | Deployed, public, no login | Yes |
-| ≥500 proxies indexed and ranked | No: 58 covered |
+| ≥500 proxies indexed and ranked | **Yes: 939 covered** locally (2026-09-20). Live still serves 58 until this is deployed |
 | Ten protocols hand-verified | **Yes: 13**, by shape, replayed in CI ([docs/verification.md](verification.md)). The human "open every link" pass is still Sharif's |
 | README a stranger can follow | Yes, and the headline claim is now correct |
 | One published write-up | No |
@@ -69,3 +82,23 @@ root: a 2-of-3 Safe on Base behind six beacon proxies.
 - **2026-09-19: the public Base endpoint's `eth_call` limiter** allows about ten back-to-back
   calls, then answers HTTP 429 until it sees roughly seven seconds of quiet. That, not chain
   state, is why the resolved count wandered between scans.
+- **2026-09-20: at chain-wide scale the largest single-key authorities are much larger than
+  the seed suggested.** `0x21eb…B5fc` is the beacon controller for **65** proxies and
+  `0xDecA…b3B1` is the admin of **62**, both resolved at High confidence — the first through
+  the beacon path, the second through the admin slot, neither through the Medium-capped UUPS
+  path. Both were checked against the aliasing rule before being called keys: each has empty
+  code on Base *and* empty code at its unaliased address (`addr - 0x1111…1111`) on two
+  independent Ethereum endpoints. They are genuine EOAs, not the mistake of 2026-09-19.
+- **2026-09-20: the seed was not representative of Base.** In the 62-address curated seed,
+  transparent proxies outnumbered UUPS 33 to 15. In the 964-address chain-wide sample the
+  order inverts: UUPS 472, beacon 259, transparent 206. Step 3's UUPS and beacon paths, worth
+  15 resolutions against the seed, are worth 360 here — most of the index would have been
+  unresolvable without them.
+- **2026-09-20: `unrecognized_interface` is the dominant gap at scale**, 345 of the 408
+  unresolved. The long tail of Base does not answer `owner()`, `getOwners()` or
+  `getMinDelay()`, and naming that gap is the honest answer; the seed's 41% unresolved rate
+  understated it because the seed was picked for protocols with recognizable interfaces.
+- **2026-09-20: resumability held under a real kill.** SIGKILL at 912s left 100 rows durably
+  written; the resumed pass read the cursor and wrote the remaining 864 with 0 failures. The
+  same run had been lost earlier that day because it wrote to `/tmp` and the machine
+  rebooted — the resumability is only worth what the filesystem under it is worth.

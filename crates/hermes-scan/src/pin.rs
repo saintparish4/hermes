@@ -3,8 +3,11 @@
 //! A scan knows a value was one thing at the last observation and another at this one. The
 //! public endpoint answers `eth_call` and `eth_getStorageAt` at any historical block, so the
 //! first block the new value holds at can be found by bisection: about sixteen reads for a day
-//! of Base blocks, where reading logs for the same day would take hundreds of 2,000-block
-//! windows (the most `eth_getLogs` range the endpoint accepts, measured 2026-09-30).
+//! of Base blocks and one more per doubling of the bracket. Reading logs instead costs a request
+//! per 2,000 blocks (the most `eth_getLogs` range the endpoint accepts, measured 2026-09-30):
+//! about 22 for a day, but about 200 for the nine days between the Sep 20 and Sep 29 scans. And
+//! logs need the event each kind of contract emits for each kind of change; a read at a block
+//! needs only the getter the scan already uses.
 //!
 //! Bisection finds a boundary, not a history. If the value changed and changed back between two
 //! scans, or changed twice, the block found is one where the new value holds after one where it

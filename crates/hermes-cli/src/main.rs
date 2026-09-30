@@ -5,6 +5,7 @@
 //! nothing and cost a second build target. `record` and `verify` are developer tools that ride
 //! along because they have to run exactly the pipeline the deployment runs.
 
+mod history;
 mod inspect;
 
 use alloy::primitives::Address;
@@ -22,6 +23,7 @@ use hermes_scan::{
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -258,6 +260,42 @@ enum Command {
         min_shared: i64,
         #[arg(long)]
         json: bool,
+    },
+    /// Every recorded change to one proxy or authority, oldest first. Reads the database only.
+    History {
+        address: String,
+        #[arg(long, value_parser = parse_chain)]
+        chain: Option<Chain>,
+        /// Include changes that are Hermes reading the chain differently, not the chain moving.
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Every change in a range. Exits 1 when anything on chain changed and 0 when nothing did,
+    /// so a scheduled job can act on it. Reads the database only.
+    Diff {
+        /// `24h`, `7d`, a date, or Unix seconds.
+        #[arg(long)]
+        since: Option<String>,
+        /// Only changes first seen after this Base block.
+        #[arg(long)]
+        after_block: Option<i64>,
+        /// Only changes first seen at or before this Base block.
+        #[arg(long)]
+        to_block: Option<i64>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Bisect every change not yet pinned to the first block its new value holds at.
+    Pin {
+        #[command(flatten)]
+        endpoints: Endpoints,
+        /// Pin at most this many changes in this run.
+        #[arg(long)]
+        limit: Option<i64>,
     },
     /// Serve the JSON API and the static page.
     Serve {
@@ -613,7 +651,7 @@ async fn verify(table: &std::path::Path, endpoints: &Endpoints) -> anyhow::Resul
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> anyhow::Result<ExitCode> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -623,6 +661,30 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
+        Command::Diff {
+            since,
+            after_block,
+            to_block,
+            all,
+            json,
+        } => {
+            let range = history::Range {
+                since,
+                after_block,
+                to_block,
+                all,
+            };
+            history::diff(&open(&cli.database_url).await?, range, now(), json).await
+        }
+        command => run(&cli.database_url, command)
+            .await
+            .map(|()| ExitCode::SUCCESS),
+    }
+}
+
+/// Commands that read a chain.
+async fn run(db: &str, command: Command) -> anyhow::Result<()> {
+    match command {
         Command::Scan {
             endpoints,
             concurrency,
@@ -638,7 +700,7 @@ async fn main() -> anyhow::Result<()> {
                 batch,
                 classify_only,
             };
-            scan(&cli.database_url, &endpoints, plan).await
+            scan(db, &endpoints, plan).await
         }
         Command::Discover {
             endpoints,
@@ -653,7 +715,7 @@ async fn main() -> anyhow::Result<()> {
                 per_family,
                 max_windows,
             };
-            discover(&cli.database_url, &endpoints, plan).await
+            discover(db, &endpoints, plan).await
         }
         Command::Record {
             address,
@@ -664,37 +726,61 @@ async fn main() -> anyhow::Result<()> {
             endpoints,
         } => record(address, &name, (block, l1_block), &out_dir, &endpoints).await,
         Command::Verify { table, endpoints } => verify(&table, &endpoints).await,
+        Command::Pin { endpoints, limit } => pin(db, &endpoints, limit).await,
+        offline => run_offline(&open(db).await?, db, offline).await,
+    }
+}
+
+async fn pin(db: &str, endpoints: &Endpoints, limit: Option<i64>) -> anyhow::Result<()> {
+    history::pin_events(
+        &open(db).await?,
+        hermes_scan::connect(&endpoints.rpc_url).await?,
+        hermes_scan::connect(&endpoints.l1_rpc_url).await?,
+        Duration::from_millis(endpoints.call_interval_ms),
+        limit,
+    )
+    .await
+}
+
+/// Commands that read the database and nothing else.
+async fn run_offline(store: &Store, db: &str, command: Command) -> anyhow::Result<()> {
+    match command {
         Command::Migrate => {
-            open(&cli.database_url).await?;
-            println!("database at {} is on the current schema", cli.database_url);
+            println!("database at {db} is on the current schema");
             Ok(())
         }
         Command::Authority {
             address,
             chain,
             json,
-        } => inspect::authority(&open(&cli.database_url).await?, &address, chain, json).await,
+        } => inspect::authority(store, &address, chain, json).await,
         Command::BlastRadius {
             address,
             chain,
             json,
-        } => inspect::blast_radius(&open(&cli.database_url).await?, &address, chain, json).await,
-        Command::Owners { address, chain } => {
-            inspect::owners(&open(&cli.database_url).await?, &address, chain).await
-        }
+        } => inspect::blast_radius(store, &address, chain, json).await,
+        Command::Owners { address, chain } => inspect::owners(store, &address, chain).await,
         Command::Graph {
             address,
             chain,
             format,
-        } => inspect::graph(&open(&cli.database_url).await?, &address, chain, &format).await,
-        Command::Key { address, json } => {
-            inspect::key(&open(&cli.database_url).await?, &address, json).await
-        }
-        Command::Signers { min_shared, json } => {
-            inspect::signers(&open(&cli.database_url).await?, min_shared, json).await
-        }
+        } => inspect::graph(store, &address, chain, &format).await,
+        Command::Key { address, json } => inspect::key(store, &address, json).await,
+        Command::Signers { min_shared, json } => inspect::signers(store, min_shared, json).await,
+        Command::History {
+            address,
+            chain,
+            all,
+            json,
+        } => history::history(store, &address, chain, all, json).await,
         Command::Serve { port, static_dir } => {
-            hermes_api::serve(open(&cli.database_url).await?, static_dir, port).await
+            hermes_api::serve(store.clone(), static_dir, port).await
         }
+        Command::Diff { .. }
+        | Command::Scan { .. }
+        | Command::Discover { .. }
+        | Command::Record { .. }
+        | Command::Verify { .. }
+        | Command::Pin { .. } => unreachable!("dispatched before the database-only commands"),
     }
 }

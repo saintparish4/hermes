@@ -1,4 +1,5 @@
 pub mod discover;
+pub mod pin;
 pub mod pipeline;
 pub mod probe;
 pub mod resolve;

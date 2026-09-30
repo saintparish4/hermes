@@ -407,13 +407,17 @@ impl Store {
             .collect())
     }
 
-    /// Chain events bisection has not pinned to a block yet, oldest first.
+    /// Chain events bisection has not pinned to a block yet, oldest first. Only fields that are
+    /// one read at a block qualify; a root or a key count is a verdict over many reads and keeps
+    /// its bracketing blocks.
     pub async fn unpinned_events(&self, limit: Option<i64>) -> anyhow::Result<Vec<StoredEvent>> {
         Ok(sqlx::query(concat!(
             "SELECT ",
             event_columns!(),
             " FROM authority_event WHERE at_block IS NULL AND cause = 'chain' \
              AND last_old_block IS NOT NULL AND first_new_block IS NOT NULL \
+             AND field IN ('implementation', 'admin', 'beacon', 'owner', 'safe_threshold', \
+                           'timelock_delay', 'safe_owner_added', 'safe_owner_removed') \
              ORDER BY id LIMIT COALESCE(?1, -1)"
         ))
         .bind(limit)
@@ -1137,9 +1141,14 @@ mod tests {
         write(&s, 10, before()).await;
         write(&s, 20, after()).await;
         let unpinned = s.unpinned_events(None).await.unwrap();
-        assert_eq!(unpinned.len(), 3);
+        assert_eq!(
+            unpinned.len(),
+            1,
+            "the root and key count are verdicts, not reads"
+        );
+        assert_eq!(unpinned[0].change.field, Field::Owner);
         s.pin_event(unpinned[0].id, 15).await.unwrap();
-        assert_eq!(s.unpinned_events(None).await.unwrap().len(), 2);
+        assert!(s.unpinned_events(None).await.unwrap().is_empty());
     }
 
     /// A key sits in Safes on both chains, and the same five signers behind two Safes is a

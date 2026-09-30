@@ -35,7 +35,9 @@ fi
 # the next boot: it skips everything scanned in the last twenty hours.
 #
 # Discovery runs first and is allowed to fail: an unreadable window stops it without losing its
-# place, and the scan still covers everything already seeded.
+# place, and the scan still covers everything already seeded. Pinning runs after the scan and is
+# allowed to fail too: a change it cannot bisect keeps its bracketing blocks and is tried again
+# on the next pass.
 #
 # The loop lives in this container rather than in a scheduled second service because Railway
 # allows one volume per service, so a separate cron service could not reach this database.
@@ -43,6 +45,7 @@ fi
   while true; do
     hermes discover || echo "hermes: discovery failed; scanning what is already seeded" >&2
     hermes scan || echo "hermes: scan failed; keeping the previous results" >&2
+    hermes pin || echo "hermes: pinning failed; changes keep their bracketing blocks" >&2
     sleep "${HERMES_SCAN_INTERVAL:-86400}"
   done
 ) &

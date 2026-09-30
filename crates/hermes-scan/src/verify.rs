@@ -19,6 +19,11 @@ pub struct VerifiedRow {
     pub label: String,
     /// The shape of authority this row exists to exercise.
     pub shape: String,
+    /// True only at the checked block: the chain has since moved, on purpose, and the row is
+    /// there to pin what it moved from. The live re-check reads these at their own blocks rather
+    /// than at the head, where they would fail every day for being history.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub historical: bool,
     pub expected: Expected,
     pub checked: Checked,
 }
@@ -137,10 +142,13 @@ pub fn render_markdown(rows: &[VerifiedRow]) -> String {
     let dash = || "—".to_string();
     for (i, r) in rows.iter().enumerate() {
         let e = &r.expected;
-        let blocks = match r.checked.ethereum_block {
+        let mut blocks = match r.checked.ethereum_block {
             Some(l1) => format!("Base {} / L1 {}", r.checked.base_block, l1),
             None => format!("Base {}", r.checked.base_block),
         };
+        if r.historical {
+            blocks.push_str(" (history: true only then)");
+        }
         let links = r
             .checked
             .urls

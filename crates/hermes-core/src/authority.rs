@@ -19,7 +19,8 @@ use std::collections::{HashMap, HashSet};
 pub const MAX_DEPTH: usize = 4;
 
 /// What an address turned out to be, as far as code goes.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Code {
     /// Code on its own chain, so the interface answers mean something.
     #[default]
@@ -35,7 +36,12 @@ pub enum Code {
 }
 
 /// What one address answered when probed for the interfaces I recognize.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// Serializable because the store keeps each one whole: it is the exact input the resolver
+/// walks, so an offline walk over stored probes gives the answer the scan published. Fields
+/// added later default to absent, which is what an older probe that never asked means.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AuthorityProbe {
     pub code: Code,
     pub owners: Option<Vec<Address>>,
@@ -220,11 +226,16 @@ fn classify(probe: &AuthorityProbe) -> (AuthorityKind, bool) {
     }
 }
 
+/// What `probe` makes an address, by the same precedence the walk uses.
+pub fn authority_kind(probe: &AuthorityProbe) -> AuthorityKind {
+    classify(probe).0
+}
+
 /// Where control passes from a node that is not terminal.
 ///
 /// An owner lives on the chain it was read from. The alias is the one edge that crosses from
 /// Base to Ethereum.
-fn successor(node: Node, probe: &AuthorityProbe) -> Option<Node> {
+pub fn successor(node: Node, probe: &AuthorityProbe) -> Option<Node> {
     match probe.code {
         Code::L1Alias(l1) => Some(Node::ethereum(l1)),
         Code::Present | Code::Absent => probe.owner.map(|address| Node {

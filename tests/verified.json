@@ -360,5 +360,64 @@
         "https://basescan.org/address/0x4200000000000000000000000000000000000006#code"
       ]
     }
+  },
+  {
+    "name": "sep29-before",
+    "address": "0x9Caa0e7277ce86A4644F2D10b72561080531b674",
+    "label": "Beacon proxy, before",
+    "shape": "The largest root on 2026-09-20: one key behind a shared beacon, the block before it handed the beacon to a Safe",
+    "historical": true,
+    "expected": {
+      "kind": "beacon",
+      "terminal_chain": "base",
+      "timelock_seconds": 0,
+      "confidence": "high",
+      "upgrade_path": "beacon",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null,
+      "terminal_authority": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc",
+      "authority_kind": "eoa",
+      "compromise_depth": 1
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 51927177,
+      "ethereum_block": 26079703,
+      "how": "Raw JSON-RPC outside Hermes, found by bisecting owner() between the Sep 20 and Sep 29 scans. Beacon slot = 0xe68E..7706; implementation and admin slots zero. The beacon reverts getOwners/getThreshold/getMinDelay and answers owner() = 0x21eb..B5fc, which has no code on Base; unaliased (0x10da..a4eb) it has no code on Ethereum at 26,079,703 either. One key.",
+      "urls": [
+        "https://basescan.org/address/0x9Caa0e7277ce86A4644F2D10b72561080531b674",
+        "https://basescan.org/address/0xe68ED13998fd48497EAA3b52e20823605D8d7706#readContract"
+      ]
+    }
+  },
+  {
+    "name": "sep29-after",
+    "address": "0x9Caa0e7277ce86A4644F2D10b72561080531b674",
+    "label": "Beacon proxy, after",
+    "shape": "The same proxy one block later: a root that changed hands, which only history can show",
+    "historical": true,
+    "expected": {
+      "kind": "beacon",
+      "terminal_chain": "base",
+      "timelock_seconds": 0,
+      "confidence": "high",
+      "upgrade_path": "beacon",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null,
+      "terminal_authority": "0x6454cf0127a153295435160768C85225Cd19Bf15",
+      "authority_kind": "safe",
+      "compromise_depth": 2
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 51927178,
+      "ethereum_block": 26079703,
+      "how": "Raw JSON-RPC outside Hermes, one block later. Same beacon; owner() = 0x6454..Bf15, which has code, reverts owner()/getMinDelay and answers getThreshold() = 2 over five getOwners(). All five owners have no code on Base, and none of their unaliased addresses has code on Ethereum at 26,079,703. The previous owner, 0x21eb..B5fc, is one of the five. Two keys.",
+      "urls": [
+        "https://basescan.org/address/0x9Caa0e7277ce86A4644F2D10b72561080531b674",
+        "https://basescan.org/address/0xe68ED13998fd48497EAA3b52e20823605D8d7706#readContract",
+        "https://app.safe.global/settings/setup?safe=base:0x6454cf0127a153295435160768C85225Cd19Bf15"
+      ]
+    }
   }
 ]

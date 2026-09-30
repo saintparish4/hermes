@@ -8,10 +8,11 @@ use crate::probe::{ProbeOutcome, Scanner};
 use crate::resolve::AuthorityScanner;
 use alloy::primitives::Address;
 use hermes_core::canary;
+use hermes_core::graph_store::Observation;
 use hermes_core::store::checksum;
 use hermes_core::{
-    Classified, Node, ProxyRecord, Resolution, Store, UpgradeEntry, resolve, upgrade_entry,
-    uups_implementation,
+    AuthorityProbe, Classified, MODEL_VERSION, Node, ProxyRecord, Resolution, Store, UpgradeEntry,
+    resolve, upgrade_entry, uups_implementation,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -36,6 +37,9 @@ pub struct ScanCounts {
 pub struct Scanned {
     pub records: Vec<ProxyRecord>,
     pub counts: ScanCounts,
+    /// Every settled probe the resolution walked, kept so the graph can be stored and not just
+    /// its roots. Empty when nothing was resolved.
+    pub probes: HashMap<Node, AuthorityProbe>,
 }
 
 /// What one probe established, carried until resolution has written its root onto `record`.
@@ -79,10 +83,12 @@ pub async fn scan_and_resolve(
     scanned_at: i64,
 ) -> Scanned {
     let (mut found, mut counts) = classify_targets(scanner, targets, scanned_at).await;
-    counts.resolved = resolve_authorities(authorities, &mut found).await;
+    let (resolved, probes) = resolve_authorities(authorities, &mut found).await;
+    counts.resolved = resolved;
     Scanned {
         records: found.into_iter().map(|f| f.record).collect(),
         counts,
+        probes,
     }
 }
 
@@ -91,36 +97,49 @@ pub struct RunReport {
     pub counts: ScanCounts,
     pub written: u64,
     pub batches: usize,
+    /// Graph nodes written, counting a node once per batch that walked it.
+    pub nodes: usize,
+    /// Changes recorded against what the store held before, of either cause.
+    pub events: usize,
 }
 
-/// Scan `targets` into `store` a batch at a time.
+/// Scan `targets` into `store` a batch at a time, as part of the observation `obs`.
 ///
 /// Each batch is written before the next one starts, so a run killed anywhere loses at most one
 /// batch, and the next run's `due_for_scan` carries on from there. Each batch also has to get
 /// past the canary first: one in which too many known proxies suddenly stop being covered is an
 /// endpoint failing, and the run stops rather than publish it. `authorities` of `None` only
 /// classifies, which is the quick first pass a fresh deployment makes before opening its port.
+///
+/// The scanners must read at `obs`'s blocks. Every row and every graph node is stamped with
+/// them, and a stamp that did not match the reads would date a change to the wrong block.
 pub async fn scan_into(
     store: &Store,
     scanner: &Scanner,
     authorities: Option<&AuthorityScanner>,
     targets: &[Target],
     batch: usize,
-    scanned_at: i64,
+    obs: &Observation,
 ) -> anyhow::Result<RunReport> {
     let covered_before = store.covered_addresses().await?;
     let mut report = RunReport::default();
     for chunk in targets.chunks(batch.max(1)) {
-        let scanned = match authorities {
-            Some(authorities) => scan_and_resolve(scanner, authorities, chunk, scanned_at).await,
+        let mut scanned = match authorities {
+            Some(authorities) => {
+                scan_and_resolve(scanner, authorities, chunk, obs.observed_at).await
+            }
             None => {
-                let (found, counts) = classify_targets(scanner, chunk, scanned_at).await;
+                let (found, counts) = classify_targets(scanner, chunk, obs.observed_at).await;
                 Scanned {
                     records: found.into_iter().map(|f| f.record).collect(),
                     counts,
+                    probes: HashMap::new(),
                 }
             }
         };
+        for r in &mut scanned.records {
+            r.scanned_block = obs.base_block;
+        }
         let canary = canary::check(&covered_before, &scanned.records);
         if canary.tripped() {
             anyhow::bail!(
@@ -131,7 +150,12 @@ pub async fn scan_into(
                 canary.known
             );
         }
-        report.written += store.upsert_many(&scanned.records).await?;
+        let written = store
+            .write_batch(obs, &scanned.records, &scanned.probes)
+            .await?;
+        report.written += written.rows;
+        report.nodes += written.nodes;
+        report.events += written.events;
         report.counts.add(scanned.counts);
         report.batches += 1;
         tracing::info!(
@@ -187,6 +211,9 @@ fn record(
         beacon: c.beacon.map(checksum),
         code_size: o.code_size as i64,
         scanned_at,
+        // Kept by the store only with a settled resolution, so it always names the model that
+        // produced the resolution columns beside it.
+        model_version: Some(MODEL_VERSION),
         // Filled in by the resolution pass.
         ..Default::default()
     };
@@ -222,7 +249,10 @@ async fn confirm_uups(
 /// Done as a second pass rather than inline so the probe collection can be batched across
 /// every entry at once. Entries are shared heavily — one ProxyAdmin governs twenty contracts
 /// on Base, one beacon five — so resolving per proxy would re-walk the same subgraph each time.
-async fn resolve_authorities(scanner: &AuthorityScanner, found: &mut [Found]) -> usize {
+async fn resolve_authorities(
+    scanner: &AuthorityScanner,
+    found: &mut [Found],
+) -> (usize, HashMap<Node, AuthorityProbe>) {
     let uups = confirm_uups(scanner, found).await;
     let entries: Vec<_> = found
         .iter()
@@ -255,7 +285,7 @@ async fn resolve_authorities(scanner: &AuthorityScanner, found: &mut [Found]) ->
             Some(Ok(_)) | None => {}
         }
     }
-    resolved
+    (resolved, probes)
 }
 
 /// Put one resolution onto a row, capped at what its entry point can support. Returns whether

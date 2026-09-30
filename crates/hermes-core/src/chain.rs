@@ -24,6 +24,12 @@ impl Chain {
             Self::Ethereum => "ethereum",
         }
     }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        [Self::Base, Self::Ethereum]
+            .into_iter()
+            .find(|c| c.as_str().eq_ignore_ascii_case(s))
+    }
 }
 
 /// An address together with the chain it lives on.
@@ -50,6 +56,29 @@ impl Node {
             chain: Chain::Ethereum,
             address,
         }
+    }
+}
+
+/// `{"chain": "base", "address": "0x…"}`, the address EIP-55 checksummed like every address
+/// Hermes publishes.
+impl Serialize for Node {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut out = s.serialize_struct("Node", 2)?;
+        out.serialize_field("chain", self.chain.as_str())?;
+        out.serialize_field("address", &self.address.to_checksum(None))?;
+        out.end()
+    }
+}
+
+impl std::fmt::Display for Node {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{}",
+            self.chain.as_str(),
+            self.address.to_checksum(None)
+        )
     }
 }
 

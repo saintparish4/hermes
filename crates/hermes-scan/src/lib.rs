@@ -9,5 +9,5 @@ pub mod verify;
 pub use pipeline::{RunReport, ScanCounts, Scanned, Target, scan_and_resolve, scan_into};
 pub use probe::{ProbeOutcome, ReadConfidence, Scanner, connect};
 pub use resolve::{AuthorityScanner, Endpoint, MAX_OWNERS};
-pub use rpc::{ChainRpc, Fixture, LiveRpc, RecordingRpc, ReplayRpc};
+pub use rpc::{ChainRpc, Fixture, LiveRpc, RecordingRpc, ReplayRpc, finalized_block};
 pub use seed::{SEED, SeedEntry};

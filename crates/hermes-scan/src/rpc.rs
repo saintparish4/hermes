@@ -6,7 +6,9 @@
 //! `buffer_unordered` interleaves addresses, and a first-in-first-out mock would make any test
 //! over more than one address flaky by construction.
 
-use alloy::eips::BlockId;
+use alloy::consensus::BlockHeader;
+use alloy::eips::{BlockId, BlockNumberOrTag};
+use alloy::network::BlockResponse;
 use alloy::primitives::{Address, B256, Bytes, U256, keccak256};
 use alloy::providers::{DynProvider, Provider};
 use alloy::rpc::types::TransactionRequest;
@@ -82,6 +84,28 @@ impl ChainRpc for LiveRpc {
             Ok(self.provider.call(tx).block(self.block_id()).await?)
         })
     }
+}
+
+/// The newest block the endpoint calls finalized.
+///
+/// Scans pin every read to this rather than to `latest`. A finalized block cannot be reorged
+/// away, so a change recorded against it is a change the chain will keep; the cost is minutes
+/// of staleness (about 900 blocks on Base, 80 on Ethereum, measured 2026-09-30), which a daily
+/// scan cannot see.
+pub async fn finalized_block(provider: &DynProvider) -> anyhow::Result<u64> {
+    let mut last = None;
+    for attempt in 0..4u32 {
+        match provider
+            .get_block_by_number(BlockNumberOrTag::Finalized)
+            .await
+        {
+            Ok(Some(block)) => return Ok(block.header().number()),
+            Ok(None) => last = Some(anyhow::anyhow!("the endpoint has no finalized block")),
+            Err(e) => last = Some(e.into()),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(1000 << attempt)).await;
+    }
+    Err(last.unwrap_or_else(|| anyhow::anyhow!("no attempt made")))
 }
 
 /// What a code read established. The scanner only ever asks whether code exists and how big

@@ -51,6 +51,12 @@ pub struct ProxyRecord {
     pub unresolved_reason: Option<String>,
     /// Why a root has no key count: `truncated`, `cycle` or `owners_unknown`.
     pub depth_unknown_reason: Option<String>,
+    /// The Base block every read behind this row was pinned to. Null for rows scanned before
+    /// reads were pinned, which read whatever `latest` was at the time.
+    pub scanned_block: Option<i64>,
+    /// `graph::MODEL_VERSION` of the resolver that produced the stored resolution. Null for
+    /// resolutions made before versions existed.
+    pub model_version: Option<i64>,
 }
 
 impl ProxyRecord {
@@ -139,7 +145,9 @@ CREATE TABLE IF NOT EXISTS proxy (
     resolution_confidence  TEXT,
     upgrade_path           TEXT,
     unresolved_reason      TEXT,
-    depth_unknown_reason   TEXT
+    depth_unknown_reason   TEXT,
+    scanned_block          INTEGER,
+    model_version          INTEGER
 );
 -- Exposure gets grouped by authority, and the admin column is what it groups on, so it is
 -- indexed from the start.
@@ -160,6 +168,73 @@ CREATE TABLE IF NOT EXISTS cursor (
     name  TEXT PRIMARY KEY NOT NULL,
     value INTEGER NOT NULL
 );
+-- One scan run, and the blocks every read in it was pinned to.
+CREATE TABLE IF NOT EXISTS observation (
+    id             INTEGER PRIMARY KEY,
+    base_block     INTEGER,
+    ethereum_block INTEGER,
+    observed_at    INTEGER NOT NULL,
+    model_version  INTEGER NOT NULL
+);
+-- Every address a resolution probed, with the whole probe it last answered. The probe is the
+-- resolver's exact input, so a walk over these rows gives the answer the scan published; the
+-- other columns are it again, flattened for SQL to filter on.
+CREATE TABLE IF NOT EXISTS node (
+    chain            TEXT NOT NULL,
+    address          TEXT NOT NULL COLLATE NOCASE,
+    kind             TEXT NOT NULL,
+    code             TEXT NOT NULL,
+    threshold        INTEGER,
+    owner_count      INTEGER,
+    min_delay        INTEGER,
+    probe            TEXT NOT NULL,
+    model_version    INTEGER NOT NULL,
+    first_seen_block INTEGER,
+    first_seen_at    INTEGER NOT NULL,
+    last_seen_block  INTEGER,
+    last_seen_at     INTEGER NOT NULL,
+    PRIMARY KEY (chain, address)
+);
+-- One row per stretch of time an edge was seen. An edge that closes and is later seen again
+-- opens a new row, so this table is the edge's history as well as its present.
+CREATE TABLE IF NOT EXISTS edge (
+    id               INTEGER PRIMARY KEY,
+    from_chain       TEXT NOT NULL,
+    from_address     TEXT NOT NULL COLLATE NOCASE,
+    relation         TEXT NOT NULL,
+    to_chain         TEXT NOT NULL,
+    to_address       TEXT NOT NULL COLLATE NOCASE,
+    first_seen_block INTEGER,
+    first_seen_at    INTEGER NOT NULL,
+    last_seen_block  INTEGER,
+    last_seen_at     INTEGER NOT NULL,
+    closed_block     INTEGER,
+    closed_at        INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_edge_open
+    ON edge(from_chain, from_address, relation, to_chain, to_address) WHERE closed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_edge_to ON edge(to_chain, to_address) WHERE closed_at IS NULL;
+-- What changed between two observations of one proxy or node. The old value was last seen at
+-- `last_old_block`, the new one first at `first_new_block`; `at_block` is filled in once
+-- bisection has found the first block the new value holds at.
+CREATE TABLE IF NOT EXISTS authority_event (
+    id              INTEGER PRIMARY KEY,
+    observation_id  INTEGER NOT NULL,
+    subject_type    TEXT NOT NULL,
+    subject_chain   TEXT NOT NULL,
+    subject_address TEXT NOT NULL COLLATE NOCASE,
+    field           TEXT NOT NULL,
+    old_value       TEXT,
+    new_value       TEXT,
+    last_old_block  INTEGER,
+    first_new_block INTEGER,
+    at_block        INTEGER,
+    cause           TEXT NOT NULL,
+    model_version   INTEGER NOT NULL,
+    observed_at     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_event_subject ON authority_event(subject_chain, subject_address);
+CREATE INDEX IF NOT EXISTS idx_event_time ON authority_event(observed_at);
 "#;
 
 /// Indexes over columns that `migrate` may still be adding.
@@ -214,6 +289,8 @@ const ADDED_COLUMNS: &[AddedColumn] = &[
     column("ALTER TABLE proxy ADD COLUMN upgrade_path TEXT"),
     column("ALTER TABLE proxy ADD COLUMN unresolved_reason TEXT"),
     column("ALTER TABLE proxy ADD COLUMN depth_unknown_reason TEXT"),
+    column("ALTER TABLE proxy ADD COLUMN scanned_block INTEGER"),
+    column("ALTER TABLE proxy ADD COLUMN model_version INTEGER"),
 ];
 
 /// Every column `row_to_record` reads, named rather than `*`.
@@ -229,9 +306,10 @@ macro_rules! proxy_columns {
         "address, label, kind, impl_addr, admin_addr, beacon_addr, code_size, scanned_at, \
          terminal_authority, terminal_chain, authority_kind, compromise_depth, \
          timelock_seconds, resolution_confidence, upgrade_path, unresolved_reason, \
-         depth_unknown_reason"
+         depth_unknown_reason, scanned_block, model_version"
     };
 }
+pub(crate) use proxy_columns;
 
 /// The kinds v1 counts as covered, as SQL. Must match `ProxyKind::is_covered_proxy`; a test
 /// holds the two together.
@@ -240,6 +318,7 @@ macro_rules! covered_kinds {
         "('transparent','uups','beacon','eip1822','admin_only')"
     };
 }
+pub(crate) use covered_kinds;
 
 #[derive(Clone)]
 pub struct Store {
@@ -299,51 +378,7 @@ impl Store {
         let mut tx = self.pool.begin().await?;
         let mut n = 0;
         for r in records {
-            let res = sqlx::query(
-                r#"INSERT INTO proxy (address,label,kind,impl_addr,admin_addr,beacon_addr,code_size,scanned_at,
-                                      terminal_authority,terminal_chain,authority_kind,compromise_depth,
-                                      timelock_seconds,resolution_confidence,upgrade_path,
-                                      unresolved_reason,depth_unknown_reason)
-                   VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
-                   ON CONFLICT(address) DO UPDATE SET
-                     label=COALESCE(excluded.label, proxy.label),
-                     kind=excluded.kind,
-                     impl_addr=excluded.impl_addr,
-                     admin_addr=excluded.admin_addr,
-                     beacon_addr=excluded.beacon_addr,
-                     code_size=excluded.code_size,
-                     scanned_at=excluded.scanned_at,
-                     -- ?18 is whether the incoming resolution is settled (see
-                     -- `resolution_is_settled`). Settled answers replace every resolution column as
-                     -- one unit: per-column COALESCE let a new root inherit the old root's key
-                     -- count, and a root whose admin moved to an unrecognized contract has to
-                     -- stop being published. An incoming row that is not settled (the node would
-                     -- not answer, or resolution never ran) keeps the last known answer, because
-                     -- an outage has told me nothing about the chain.
-                     terminal_authority=CASE WHEN ?18 THEN excluded.terminal_authority ELSE proxy.terminal_authority END,
-                     terminal_chain=CASE WHEN ?18 THEN excluded.terminal_chain ELSE proxy.terminal_chain END,
-                     authority_kind=CASE WHEN ?18 THEN excluded.authority_kind ELSE proxy.authority_kind END,
-                     compromise_depth=CASE WHEN ?18 THEN excluded.compromise_depth ELSE proxy.compromise_depth END,
-                     timelock_seconds=CASE WHEN ?18 THEN excluded.timelock_seconds ELSE proxy.timelock_seconds END,
-                     resolution_confidence=CASE WHEN ?18 THEN excluded.resolution_confidence ELSE proxy.resolution_confidence END,
-                     upgrade_path=CASE WHEN ?18 THEN excluded.upgrade_path ELSE proxy.upgrade_path END,
-                     depth_unknown_reason=CASE WHEN ?18 THEN excluded.depth_unknown_reason ELSE proxy.depth_unknown_reason END,
-                     -- A row that keeps an old root has no reason to be unresolved; a row that
-                     -- has none keeps its last settled reason over a fresh "undetermined".
-                     unresolved_reason=CASE WHEN ?18 THEN excluded.unresolved_reason
-                       WHEN proxy.terminal_authority IS NOT NULL THEN NULL
-                       ELSE COALESCE(proxy.unresolved_reason, excluded.unresolved_reason) END
-                   WHERE NOT (proxy.code_size > 0 AND excluded.code_size = 0)"#,
-            )
-            .bind(&r.address).bind(&r.label).bind(&r.kind)
-            .bind(&r.implementation).bind(&r.admin).bind(&r.beacon)
-            .bind(r.code_size).bind(r.scanned_at)
-            .bind(&r.terminal_authority).bind(&r.terminal_chain).bind(&r.authority_kind)
-            .bind(r.compromise_depth).bind(r.timelock_seconds).bind(&r.resolution_confidence)
-            .bind(&r.upgrade_path).bind(&r.unresolved_reason).bind(&r.depth_unknown_reason)
-            .bind(r.resolution_is_settled())
-            .execute(&mut *tx).await?;
-            n += res.rows_affected();
+            n += upsert_row(&mut tx, r).await?;
         }
         tx.commit().await?;
         Ok(n)
@@ -677,7 +712,78 @@ impl Store {
     }
 }
 
-fn row_to_record(r: &sqlx::sqlite::SqliteRow) -> ProxyRecord {
+/// One row of `upsert_many`, on a connection the caller owns. Returns 1 when the row landed and
+/// 0 when the never-overwrite-live-code guard refused it, which is how the graph writer knows
+/// not to trust anything else the refused row said.
+pub(crate) async fn upsert_row(conn: &mut SqliteConnection, r: &ProxyRecord) -> sqlx::Result<u64> {
+    let res = sqlx::query(
+        r#"INSERT INTO proxy (address,label,kind,impl_addr,admin_addr,beacon_addr,code_size,scanned_at,
+                              terminal_authority,terminal_chain,authority_kind,compromise_depth,
+                              timelock_seconds,resolution_confidence,upgrade_path,
+                              unresolved_reason,depth_unknown_reason,scanned_block,model_version)
+           VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?19,?20)
+           ON CONFLICT(address) DO UPDATE SET
+             label=COALESCE(excluded.label, proxy.label),
+             kind=excluded.kind,
+             impl_addr=excluded.impl_addr,
+             admin_addr=excluded.admin_addr,
+             beacon_addr=excluded.beacon_addr,
+             code_size=excluded.code_size,
+             scanned_at=excluded.scanned_at,
+             scanned_block=excluded.scanned_block,
+             -- ?18 is whether the incoming resolution is settled (see
+             -- `resolution_is_settled`). Settled answers replace every resolution column as
+             -- one unit: per-column COALESCE let a new root inherit the old root's key
+             -- count, and a root whose admin moved to an unrecognized contract has to
+             -- stop being published. An incoming row that is not settled (the node would
+             -- not answer, or resolution never ran) keeps the last known answer, because
+             -- an outage has told me nothing about the chain.
+             terminal_authority=CASE WHEN ?18 THEN excluded.terminal_authority ELSE proxy.terminal_authority END,
+             terminal_chain=CASE WHEN ?18 THEN excluded.terminal_chain ELSE proxy.terminal_chain END,
+             authority_kind=CASE WHEN ?18 THEN excluded.authority_kind ELSE proxy.authority_kind END,
+             compromise_depth=CASE WHEN ?18 THEN excluded.compromise_depth ELSE proxy.compromise_depth END,
+             timelock_seconds=CASE WHEN ?18 THEN excluded.timelock_seconds ELSE proxy.timelock_seconds END,
+             resolution_confidence=CASE WHEN ?18 THEN excluded.resolution_confidence ELSE proxy.resolution_confidence END,
+             upgrade_path=CASE WHEN ?18 THEN excluded.upgrade_path ELSE proxy.upgrade_path END,
+             depth_unknown_reason=CASE WHEN ?18 THEN excluded.depth_unknown_reason ELSE proxy.depth_unknown_reason END,
+             model_version=CASE WHEN ?18 THEN excluded.model_version ELSE proxy.model_version END,
+             -- A row that keeps an old root has no reason to be unresolved; a row that
+             -- has none keeps its last settled reason over a fresh "undetermined".
+             unresolved_reason=CASE WHEN ?18 THEN excluded.unresolved_reason
+               WHEN proxy.terminal_authority IS NOT NULL THEN NULL
+               ELSE COALESCE(proxy.unresolved_reason, excluded.unresolved_reason) END
+           WHERE NOT (proxy.code_size > 0 AND excluded.code_size = 0)"#,
+    )
+    .bind(&r.address).bind(&r.label).bind(&r.kind)
+    .bind(&r.implementation).bind(&r.admin).bind(&r.beacon)
+    .bind(r.code_size).bind(r.scanned_at)
+    .bind(&r.terminal_authority).bind(&r.terminal_chain).bind(&r.authority_kind)
+    .bind(r.compromise_depth).bind(r.timelock_seconds).bind(&r.resolution_confidence)
+    .bind(&r.upgrade_path).bind(&r.unresolved_reason).bind(&r.depth_unknown_reason)
+    .bind(r.resolution_is_settled())
+    .bind(r.scanned_block).bind(r.model_version)
+    .execute(&mut *conn).await?;
+    Ok(res.rows_affected())
+}
+
+/// The stored row for one proxy, read on a connection the caller owns.
+pub(crate) async fn proxy_on(
+    conn: &mut SqliteConnection,
+    address: &str,
+) -> sqlx::Result<Option<ProxyRecord>> {
+    Ok(sqlx::query(concat!(
+        "SELECT ",
+        proxy_columns!(),
+        " FROM proxy WHERE address = ?1 COLLATE NOCASE"
+    ))
+    .bind(address)
+    .fetch_optional(&mut *conn)
+    .await?
+    .as_ref()
+    .map(row_to_record))
+}
+
+pub(crate) fn row_to_record(r: &sqlx::sqlite::SqliteRow) -> ProxyRecord {
     ProxyRecord {
         address: r.get("address"),
         label: r.get("label"),
@@ -696,6 +802,8 @@ fn row_to_record(r: &sqlx::sqlite::SqliteRow) -> ProxyRecord {
         upgrade_path: r.get("upgrade_path"),
         unresolved_reason: r.get("unresolved_reason"),
         depth_unknown_reason: r.get("depth_unknown_reason"),
+        scanned_block: r.get("scanned_block"),
+        model_version: r.get("model_version"),
     }
 }
 

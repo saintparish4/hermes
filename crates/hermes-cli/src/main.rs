@@ -9,13 +9,14 @@ use alloy::primitives::Address;
 use alloy::providers::Provider;
 use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
+use hermes_core::graph_store::Observation;
 use hermes_core::store::{Coverage, DISCOVERY_CAP};
 use hermes_core::{Chain, SeedRow, Store};
 use hermes_scan::discover::{self, Discoverer};
-use hermes_scan::verify::{differences, load_table};
+use hermes_scan::verify::{Checked, differences, load_table};
 use hermes_scan::{
     AuthorityScanner, ChainRpc, Endpoint, Fixture, LiveRpc, RecordingRpc, RunReport, SEED, Scanner,
-    Target, scan_and_resolve, scan_into,
+    Target, finalized_block, scan_and_resolve, scan_into,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -85,11 +86,53 @@ impl Endpoints {
         (Scanner::new(base, concurrency), authorities)
     }
 
-    async fn live(&self, concurrency: usize) -> anyhow::Result<(Scanner, AuthorityScanner)> {
-        let base = LiveRpc::new(hermes_scan::connect(&self.rpc_url).await?);
-        let ethereum = LiveRpc::new(hermes_scan::connect(&self.l1_rpc_url).await?);
-        Ok(self.scanners(Arc::new(base), Arc::new(ethereum), concurrency))
+    /// Scanners reading both chains at their finalized blocks, and those blocks.
+    async fn pinned(&self, concurrency: usize) -> anyhow::Result<Pinned> {
+        let base_provider = hermes_scan::connect(&self.rpc_url).await?;
+        let l1_provider = hermes_scan::connect(&self.l1_rpc_url).await?;
+        let base_block = finalized_block(&base_provider)
+            .await
+            .context("reading Base's finalized block")?;
+        let ethereum_block = finalized_block(&l1_provider)
+            .await
+            .context("reading Ethereum's finalized block")?;
+        let (scanner, authorities) = self.scanners(
+            Arc::new(LiveRpc::at_block(base_provider, base_block)),
+            Arc::new(LiveRpc::at_block(l1_provider, ethereum_block)),
+            concurrency,
+        );
+        Ok(Pinned {
+            scanner,
+            authorities,
+            base_block,
+            ethereum_block,
+        })
     }
+}
+
+impl Endpoints {
+    /// Scanners reading at the blocks a verified row was checked at.
+    async fn at_blocks(&self, checked: &Checked) -> anyhow::Result<(Scanner, AuthorityScanner)> {
+        let base = hermes_scan::connect(&self.rpc_url).await?;
+        let l1 = hermes_scan::connect(&self.l1_rpc_url).await?;
+        let l1_block = match checked.ethereum_block {
+            Some(b) => b,
+            None => finalized_block(&l1).await?,
+        };
+        Ok(self.scanners(
+            Arc::new(LiveRpc::at_block(base, checked.base_block)),
+            Arc::new(LiveRpc::at_block(l1, l1_block)),
+            1,
+        ))
+    }
+}
+
+/// Scanners whose every read is at one block per chain.
+struct Pinned {
+    scanner: Scanner,
+    authorities: AuthorityScanner,
+    base_block: u64,
+    ethereum_block: u64,
 }
 
 #[derive(Subcommand)]
@@ -213,11 +256,13 @@ fn report(run: RunReport, cov: &Coverage) {
         resolved = counts.resolved,
         written = run.written,
         batches = run.batches,
+        nodes = run.nodes,
+        events = run.events,
         "scan complete"
     );
     println!(
         "this run: {} ok / {} failed / {} unconfirmed ({} needed a confirming re-read), \
-         {} resolved, {} rows written in {} batches\n\
+         {} resolved, {} rows written in {} batches, {} graph nodes, {} changes recorded\n\
          store: {} covered proxies of {} scanned, {} resolved across {} distinct roots",
         counts.ok,
         counts.failed,
@@ -226,6 +271,8 @@ fn report(run: RunReport, cov: &Coverage) {
         counts.resolved,
         run.written,
         run.batches,
+        run.nodes,
+        run.events,
         cov.covered_proxies,
         cov.total_scanned,
         cov.resolved_proxies,
@@ -245,11 +292,9 @@ struct ScanPlan {
     classify_only: bool,
 }
 
-async fn scan(database_url: &str, endpoints: &Endpoints, plan: ScanPlan) -> anyhow::Result<()> {
-    let store = open(database_url).await?;
-    let started = now();
-    store.add_seeds(&curated_seeds(started)).await?;
-    let targets: Vec<Target> = store
+/// Seeded addresses due for a scan, as targets.
+async fn due_targets(store: &Store, started: i64, plan: &ScanPlan) -> anyhow::Result<Vec<Target>> {
+    store
         .due_for_scan(started - plan.fresh_hours * 3600, plan.limit)
         .await?
         .into_iter()
@@ -260,8 +305,37 @@ async fn scan(database_url: &str, endpoints: &Endpoints, plan: ScanPlan) -> anyh
             })
         })
         .collect::<anyhow::Result<_>>()
-        .context("the seed table holds a malformed address")?;
+        .context("the seed table holds a malformed address")
+}
 
+/// Pin both chains to their finalized blocks and open the observation this run writes under.
+async fn begin_pinned_run(
+    store: &Store,
+    endpoints: &Endpoints,
+    concurrency: usize,
+    started: i64,
+) -> anyhow::Result<(Pinned, Observation)> {
+    let pinned = endpoints.pinned(concurrency).await?;
+    let obs = store
+        .begin_observation(
+            Some(pinned.base_block as i64),
+            Some(pinned.ethereum_block as i64),
+            started,
+        )
+        .await?;
+    tracing::info!(
+        base_block = pinned.base_block,
+        ethereum_block = pinned.ethereum_block,
+        "reads pinned to finalized blocks"
+    );
+    Ok((pinned, obs))
+}
+
+async fn scan(database_url: &str, endpoints: &Endpoints, plan: ScanPlan) -> anyhow::Result<()> {
+    let store = open(database_url).await?;
+    let started = now();
+    store.add_seeds(&curated_seeds(started)).await?;
+    let targets = due_targets(&store, started, &plan).await?;
     tracing::info!(
         due = targets.len(),
         rpc = %endpoints.rpc_url,
@@ -269,9 +343,17 @@ async fn scan(database_url: &str, endpoints: &Endpoints, plan: ScanPlan) -> anyh
         classify_only = plan.classify_only,
         "starting scan"
     );
-    let (scanner, authorities) = endpoints.live(plan.concurrency).await?;
-    let resolver = (!plan.classify_only).then_some(&authorities);
-    let run = scan_into(&store, &scanner, resolver, &targets, plan.batch, started).await?;
+    let (pinned, obs) = begin_pinned_run(&store, endpoints, plan.concurrency, started).await?;
+    let resolver = (!plan.classify_only).then_some(&pinned.authorities);
+    let run = scan_into(
+        &store,
+        &pinned.scanner,
+        resolver,
+        &targets,
+        plan.batch,
+        &obs,
+    )
+    .await?;
 
     let cov = store.coverage().await?;
     report(run, &cov);
@@ -438,14 +520,23 @@ async fn record(
 
 async fn verify(table: &std::path::Path, endpoints: &Endpoints) -> anyhow::Result<()> {
     let rows = load_table(table)?;
-    let (scanner, authorities) = endpoints.live(1).await?;
+    let pinned = endpoints.pinned(1).await?;
+    println!(
+        "reading Base at block {} and Ethereum at block {}",
+        pinned.base_block, pinned.ethereum_block
+    );
     let mut failed = 0;
     for row in &rows {
         let target = Target {
             address: row.address,
             label: None,
         };
-        let scanned = scan_and_resolve(&scanner, &authorities, &[target], now()).await;
+        let scanned = if row.historical {
+            let (scanner, authorities) = endpoints.at_blocks(&row.checked).await?;
+            scan_and_resolve(&scanner, &authorities, &[target], now()).await
+        } else {
+            scan_and_resolve(&pinned.scanner, &pinned.authorities, &[target], now()).await
+        };
         let diffs = differences(&row.expected, scanned.records.first());
         if diffs.is_empty() {
             println!("PASS {:<28} {}", row.name, row.label);

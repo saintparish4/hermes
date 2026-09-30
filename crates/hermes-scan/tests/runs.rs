@@ -78,7 +78,8 @@ async fn run(store: &Store, fs: &[Fixture], limit: Option<i64>) -> usize {
         })
         .collect();
     let (scanner, authorities) = scanners(fs);
-    let report = scan_into(store, &scanner, Some(&authorities), &targets, 2, NOW)
+    let obs = store.begin_observation(None, None, NOW).await.unwrap();
+    let report = scan_into(store, &scanner, Some(&authorities), &targets, 2, &obs)
         .await
         .unwrap();
     report.counts.ok
@@ -173,7 +174,8 @@ async fn a_node_that_blanks_known_proxies_is_refused_and_the_store_is_left_as_it
         })
         .collect();
     let blank = Scanner::new(Arc::new(Blank), 1);
-    let refused = scan_into(&store, &blank, None, &targets, 50, NOW + 1).await;
+    let obs = store.begin_observation(None, None, NOW + 1).await.unwrap();
+    let refused = scan_into(&store, &blank, None, &targets, 50, &obs).await;
 
     let err = refused.expect_err("six known proxies going blank at once must not publish");
     assert!(err.to_string().contains("refusing to publish"), "{err}");

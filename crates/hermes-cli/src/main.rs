@@ -259,6 +259,12 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Walk every stored proxy again over the stored graph with this binary's resolver and
+    /// report what would change. Reads the database only and writes nothing.
+    Replay {
+        #[arg(long)]
+        json: bool,
+    },
     /// Pairs of Safes that share signers, across both chains. Reads the database only.
     Signers {
         #[arg(long, default_value_t = 2)]
@@ -820,6 +826,7 @@ async fn run_offline(store: &Store, db: &str, command: Command) -> anyhow::Resul
             format,
         } => inspect::graph(store, &address, chain, &format).await,
         Command::Key { address, json } => inspect::key(store, &address, json).await,
+        Command::Replay { json } => inspect::replay_all(store, json).await,
         Command::Signers { min_shared, json } => inspect::signers(store, min_shared, json).await,
         Command::History {
             address,

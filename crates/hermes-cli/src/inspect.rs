@@ -488,3 +488,81 @@ pub async fn key(store: &Store, address: &str, json: bool) -> anyhow::Result<()>
         println!("\n{}", scope_line(&v.scope));
     })
 }
+
+/// One stored row the current resolver would answer differently.
+#[derive(serde::Serialize)]
+struct Replayed {
+    proxy: String,
+    stored: String,
+    now: String,
+}
+
+fn answer(
+    root: Option<String>,
+    kind: Option<&str>,
+    keys: Option<i64>,
+    gap: Option<&str>,
+) -> String {
+    match root {
+        Some(root) => format!(
+            "{} {root} · keys {}",
+            kind_name(kind.unwrap_or("?")),
+            keys.map_or_else(
+                || format!("unknown ({})", gap.unwrap_or("?")),
+                |k| k.to_string()
+            )
+        ),
+        None => format!("no root ({})", gap.unwrap_or("?")),
+    }
+}
+
+/// Walk every stored proxy again over the stored graph with the resolver this binary has, and
+/// report what it would answer differently. Reads only: a replay is not an observation of the
+/// chain. Probes stored by an older model may lack answers a newer one asks, in which case the
+/// next scan, not this, is the real answer.
+pub async fn replay_all(store: &Store, json: bool) -> anyhow::Result<()> {
+    let probes = store.all_probes().await?;
+    let mut changed = Vec::new();
+    let mut compared = 0;
+    for (row, _) in store.upgrade_entries().await? {
+        let Some((_, r)) = hermes_core::graph::replay(&row, &probes) else {
+            continue;
+        };
+        compared += 1;
+        let (root, kind, keys, gap) = match r.unresolved() {
+            Some(reason) => (None, None, None, Some(reason.as_str())),
+            None => (
+                Some(r.terminal.address.to_checksum(None)),
+                Some(r.kind.as_str()),
+                r.compromise_depth.map(i64::from),
+                r.depth_gap().map(|g| g.as_str()),
+            ),
+        };
+        let now = answer(root, kind, keys, gap);
+        let stored = answer(
+            row.terminal_authority.clone(),
+            row.authority_kind.as_deref(),
+            row.compromise_depth,
+            row.depth_unknown_reason
+                .as_deref()
+                .or(row.unresolved_reason.as_deref()),
+        );
+        if !now.eq_ignore_ascii_case(&stored) {
+            changed.push(Replayed {
+                proxy: row.address,
+                stored,
+                now,
+            });
+        }
+    }
+    emit(json, &changed, || {
+        for c in &changed {
+            println!("{}\n  stored  {}\n  now     {}", c.proxy, c.stored, c.now);
+        }
+        println!(
+            "\n{} of {compared} stored resolutions would change under model {}",
+            changed.len(),
+            hermes_core::MODEL_VERSION
+        );
+    })
+}

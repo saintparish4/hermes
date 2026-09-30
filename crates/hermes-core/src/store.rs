@@ -125,6 +125,10 @@ pub struct Coverage {
     /// run. The index is a sample, and this is how it was drawn: without a cap, mass-deployed
     /// clones of a handful of contracts would be most of it.
     pub discovery_per_family: Option<i64>,
+    /// Distinct proxies discovery has seen, admitted or not, and the families they fall in.
+    /// The gap between this and `total_scanned` is what the per-family cap left out.
+    pub proxies_sighted: i64,
+    pub families_sighted: i64,
 }
 
 const SCHEMA: &str = r#"
@@ -167,6 +171,15 @@ CREATE INDEX IF NOT EXISTS idx_seed_family ON seed(family);
 CREATE TABLE IF NOT EXISTS cursor (
     name  TEXT PRIMARY KEY NOT NULL,
     value INTEGER NOT NULL
+);
+-- Every proxy discovery saw in a window, admitted to the seed or not, by family. The seed takes
+-- a few per family; this keeps the count of all of them, so an admin or beacon can say how many
+-- proxies discovery has seen answering to it.
+CREATE TABLE IF NOT EXISTS sighting (
+    family      TEXT NOT NULL,
+    address     TEXT NOT NULL COLLATE NOCASE,
+    first_block INTEGER,
+    PRIMARY KEY (family, address)
 );
 -- One scan run, and the blocks every read in it was pinned to.
 CREATE TABLE IF NOT EXISTS observation (
@@ -408,6 +421,39 @@ impl Store {
         }
         tx.commit().await?;
         Ok(written)
+    }
+
+    /// Record proxies discovery saw, whether or not their family had room in the seed.
+    pub async fn add_sightings(
+        &self,
+        rows: &[(String, String, Option<i64>)],
+    ) -> anyhow::Result<u64> {
+        let mut tx = self.pool.begin().await?;
+        let mut written = 0;
+        for (family, address, block) in rows {
+            written += sqlx::query(
+                "INSERT OR IGNORE INTO sighting (family, address, first_block) VALUES (?1, ?2, ?3)",
+            )
+            .bind(family)
+            .bind(address)
+            .bind(block)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected();
+        }
+        tx.commit().await?;
+        Ok(written)
+    }
+
+    /// How many distinct proxies discovery has seen in `family`: a floor, since discovery reads
+    /// windows of history rather than all of it.
+    pub async fn family_size(&self, family: &str) -> anyhow::Result<i64> {
+        Ok(
+            sqlx::query_scalar("SELECT COUNT(*) FROM sighting WHERE family = ?1")
+                .bind(family)
+                .fetch_one(&self.pool)
+                .await?,
+        )
     }
 
     /// Every seeded address, lowercased, so discovery can skip what it already has.
@@ -695,6 +741,12 @@ impl Store {
                 .counts("SELECT source k, COUNT(*) c FROM seed GROUP BY k ORDER BY c DESC, k")
                 .await?,
             discovery_per_family: self.cursor(DISCOVERY_CAP).await?,
+            proxies_sighted: self
+                .scalar("SELECT COUNT(DISTINCT address) FROM sighting")
+                .await?,
+            families_sighted: self
+                .scalar("SELECT COUNT(DISTINCT family) FROM sighting")
+                .await?,
         })
     }
 
@@ -1591,6 +1643,25 @@ mod tests {
         let c = s.coverage().await.unwrap();
         assert_eq!(c.discovery_per_family, Some(3));
         assert_eq!(c.seeded_by_source.len(), 2);
+    }
+
+    /// The seed keeps a few per family; the sightings keep all of them, once each.
+    #[tokio::test]
+    async fn a_family_counts_every_proxy_seen_once_whatever_the_seed_admitted() {
+        let s = mem().await;
+        let rows: Vec<(String, String, Option<i64>)> = (0..5)
+            .map(|i| ("beacon:0xb".to_string(), format!("0x{i:040x}"), Some(i)))
+            .chain(std::iter::once((
+                "beacon:0xb".to_string(),
+                format!("0x{:040X}", 0),
+                Some(9),
+            )))
+            .collect();
+        assert_eq!(s.add_sightings(&rows).await.unwrap(), 5);
+        assert_eq!(s.family_size("beacon:0xb").await.unwrap(), 5);
+        assert_eq!(s.family_size("beacon:0xc").await.unwrap(), 0);
+        let c = s.coverage().await.unwrap();
+        assert_eq!((c.proxies_sighted, c.families_sighted), (5, 1));
     }
 
     #[tokio::test]

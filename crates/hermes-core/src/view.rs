@@ -259,6 +259,10 @@ pub struct NodeView {
     /// Edges into or out of this node that have since closed.
     pub history: Vec<StoredEdge>,
     pub blast_radius: BlastRadius,
+    /// How many proxies discovery has seen using this address as their beacon or admin,
+    /// admitted to the index or not. A floor: discovery reads windows, not all of history.
+    pub sighted_as_beacon: i64,
+    pub sighted_as_admin: i64,
     pub scope: Scope,
 }
 
@@ -284,6 +288,12 @@ pub async fn node_view(store: &Store, node: Node) -> anyhow::Result<Option<NodeV
         owner_of: store.memberships(&node.address.to_checksum(None)).await?,
         history,
         blast_radius: blast_radius(node, &entries, &probes),
+        sighted_as_beacon: store
+            .family_size(&format!("beacon:{:#x}", node.address))
+            .await?,
+        sighted_as_admin: store
+            .family_size(&format!("admin:{:#x}", node.address))
+            .await?,
         scope: scope(store).await?,
         node: stored,
     }))

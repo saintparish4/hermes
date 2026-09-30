@@ -121,7 +121,9 @@ async function showNode(v){
     <h2>Who controls it</h2><div class="card"><ul class="tree">${tree(v.tree)}</ul></div>
     ${v.controls_directly.length ? `<h2>Controls directly</h2><div class="card"><table>${v.controls_directly.map(e => `<tr><td>${esc(e.relation)} of</td><td>${link(e.from)}</td></tr>`).join('')}</table></div>` : ''}
     ${v.owner_of.length ? `<h2>Signer of</h2><div class="card"><table>${v.owner_of.map(m => `<tr><td>Safe ${m.threshold}-of-${m.owner_count}</td><td>${link(m.safe)}</td></tr>`).join('')}</table></div>` : ''}
-    ${blast(v.blast_radius)}${await history(n.node.address)}`;
+    ${blast(v.blast_radius)}
+    ${v.sighted_as_beacon || v.sighted_as_admin ? `<p class="mono">Discovery saw ${[v.sighted_as_beacon && v.sighted_as_beacon + ' proxies using it as their beacon', v.sighted_as_admin && v.sighted_as_admin + ' as their admin'].filter(Boolean).join(' and ')}, in the windows of history it read. The index holds at most a few of them.</p>` : ''}
+    ${await history(n.node.address)}`;
   scope(v.scope);
 }
 async function load(address, chain){

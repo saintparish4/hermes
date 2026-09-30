@@ -271,6 +271,16 @@ fn print_node(v: &NodeView) {
     }
     println!();
     print_radius_summary(&v.blast_radius);
+    for (role, n) in [
+        ("beacon", v.sighted_as_beacon),
+        ("admin", v.sighted_as_admin),
+    ] {
+        if n > 0 {
+            println!(
+                "discovery    saw {n} proxies using it as their {role}, in the windows it read"
+            );
+        }
+    }
     println!("\n{}", scope_line(&v.scope));
 }
 

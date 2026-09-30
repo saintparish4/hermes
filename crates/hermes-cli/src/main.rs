@@ -180,6 +180,10 @@ enum Command {
         /// Stop after this many windows.
         #[arg(long)]
         max_windows: Option<usize>,
+        /// Read from the first window again. Admitting is idempotent, so this only fills in
+        /// sightings for windows read before sightings were kept.
+        #[arg(long)]
+        restart: bool,
     },
     /// Run the pipeline for one address at a pinned block and save every answer the chain gave
     /// as a replayable fixture. Prints what Hermes concluded, which is never the expectation:
@@ -497,12 +501,22 @@ async fn read_window(
     (counts, seeded): &mut (HashMap<String, i64>, HashSet<String>),
 ) -> anyhow::Result<usize> {
     let logs = reader.logs(w.from, w.to).await?;
-    let admitted = discover::admit(
-        logs.iter().filter_map(discover::sighting),
-        per_family,
-        counts,
-        seeded,
-    );
+    let sightings: Vec<discover::Sighting> = logs.iter().filter_map(discover::sighting).collect();
+    store
+        .add_sightings(
+            &sightings
+                .iter()
+                .map(|s| {
+                    (
+                        s.family.clone(),
+                        s.address.to_checksum(None),
+                        s.block.map(|b| b as i64),
+                    )
+                })
+                .collect::<Vec<_>>(),
+        )
+        .await?;
+    let admitted = discover::admit(sightings, per_family, counts, seeded);
     let rows: Vec<SeedRow> = admitted
         .iter()
         .map(|s| SeedRow {
@@ -533,6 +547,7 @@ struct DiscoverPlan {
     window: u64,
     per_family: i64,
     max_windows: Option<usize>,
+    restart: bool,
 }
 
 async fn discover(
@@ -543,6 +558,9 @@ async fn discover(
     let store = open(database_url).await?;
     let provider = hermes_scan::connect(&endpoints.rpc_url).await?;
     let head = provider.get_block_number().await?;
+    if plan.restart {
+        store.set_cursor(discover::NEXT_WINDOW, 0).await?;
+    }
     let start = discovery_start(&store, plan.stride, plan.window).await?;
     store.set_cursor(DISCOVERY_CAP, plan.per_family).await?;
 
@@ -742,12 +760,14 @@ async fn run(db: &str, command: Command) -> anyhow::Result<()> {
             window,
             per_family,
             max_windows,
+            restart,
         } => {
             let plan = DiscoverPlan {
                 stride,
                 window,
                 per_family,
                 max_windows,
+                restart,
             };
             discover(db, &endpoints, plan).await
         }

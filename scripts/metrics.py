@@ -47,6 +47,19 @@ print(
     f"| {len(single_key)} ({sum(a['proxy_count'] for a in single_key)}) "
     f"| {len(unknown_depth)} | {largest} |"
 )
-for key in ("unresolved_by_reason", "resolved_by_path"):
+for key in ("unresolved_by_reason", "depth_unknown_by_reason", "resolved_by_path"):
     if key in cov:
         print(f"\n{key}: {cov[key]}")
+
+kinds = {}
+for a in auth:
+    kinds[a.get("kind")] = kinds.get(a.get("kind"), 0) + 1
+print(f"\nroots by kind: {sorted(kinds.items(), key=lambda kv: -kv[1])}")
+
+# Instances deployed before the kept graph have no /v1; everything above still reproduces.
+try:
+    changes = get("/v1/changes?since=24h&limit=1000")
+    print(f"\nchain changes in the last 24h: {changes['count']}")
+    print(f"sighted by discovery: {cov.get('proxies_sighted')} proxies in {cov.get('families_sighted')} families")
+except Exception as e:  # noqa: BLE001 - reporting, not handling
+    print(f"\n/v1 not served here ({e.__class__.__name__}); no change counts")

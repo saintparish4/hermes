@@ -1356,6 +1356,62 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// The deploy that brings the kept graph opens the file the live service has today: every
+    /// resolution column, no `scanned_block` or `model_version`, no graph tables. Its rows must
+    /// survive whole, keep serving, and gain nothing they did not have: a stored root stays, and
+    /// its unknown model version is what later makes a changed root a reinterpretation.
+    #[tokio::test]
+    async fn a_database_from_before_the_graph_keeps_its_rows_and_gains_the_graph() {
+        let path = std::env::temp_dir().join(format!("hermes-pregraph-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let url = format!("sqlite://{}", path.display());
+        let old = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::from_str(&url)
+                    .unwrap()
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::raw_sql(
+            "CREATE TABLE proxy (
+                address TEXT PRIMARY KEY NOT NULL, label TEXT, kind TEXT NOT NULL,
+                impl_addr TEXT, admin_addr TEXT, beacon_addr TEXT,
+                code_size INTEGER NOT NULL DEFAULT 0, scanned_at INTEGER NOT NULL,
+                terminal_authority TEXT, terminal_chain TEXT, authority_kind TEXT,
+                compromise_depth INTEGER, timelock_seconds INTEGER, resolution_confidence TEXT,
+                upgrade_path TEXT, unresolved_reason TEXT, depth_unknown_reason TEXT);
+             CREATE TABLE seed (address TEXT PRIMARY KEY NOT NULL COLLATE NOCASE, label TEXT,
+                source TEXT NOT NULL, family TEXT, first_block INTEGER,
+                discovered_at INTEGER NOT NULL);
+             CREATE TABLE cursor (name TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL);
+             INSERT INTO proxy VALUES ('0x9Caa0e7277ce86A4644F2D10b72561080531b674', NULL,
+                'beacon', NULL, NULL, '0xe68ED13998fd48497EAA3b52e20823605D8d7706', 508,
+                1790708971, '0x6454cf0127a153295435160768C85225Cd19Bf15', 'base', 'safe', 2, 0,
+                'high', 'beacon', NULL, NULL);",
+        )
+        .execute(&old)
+        .await
+        .unwrap();
+        old.close().await;
+
+        let store = Store::open(&url).await.unwrap();
+        let p = store
+            .get_proxy("0x9caa0e7277ce86a4644f2d10b72561080531b674")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(p.compromise_depth, Some(2), "the stored root keeps serving");
+        assert_eq!((p.scanned_block, p.model_version), (None, None));
+        assert_eq!(store.authority_rollup().await.unwrap().len(), 1);
+        assert!(store.latest_observation().await.unwrap().is_none());
+        assert_eq!(store.coverage().await.unwrap().proxies_sighted, 0);
+        drop(store);
+        Store::open(&url).await.expect("and every boot after it");
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// The scan and the server open this database as separate processes at the same time, so
     /// the migration has to survive being run concurrently against the same file.
     ///

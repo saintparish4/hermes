@@ -52,16 +52,19 @@
   <h1>Hermes — who can change the code on Base</h1>
   <p class="sub">
     Every address below was probed directly for its ERC-1967 / EIP-1822 storage slots on Base
-    mainnet, and whatever can upgrade each one (its admin, its beacon, or for UUPS its own
-    <code>owner()</code>) was followed to the root that actually controls it: a key, a Safe,
-    or a contract on Ethereum acting through its L1→L2 alias. <em>Keys</em> is the fewest keys
-    that would have to be compromised; "unknown" means the chain was not fully identified, not
-    that it is safe. Nothing here is priced yet.
+    mainnet, and whatever can upgrade each one (its admin, its beacon, or for UUPS its own access
+    control) was followed through ProxyAdmins, Safes, timelocks, roles and smart accounts to the
+    keys at the bottom, including contracts on Ethereum acting through their L1→L2 alias.
+    <em>Keys</em> is the fewest keys an upgrade takes; "unknown" means the chain was not fully
+    identified, not that it is safe. The graph is kept between scans, so changes are recorded, and
+    any address can be <a href="/authority.html">looked up</a>. Nothing here is priced.
   </p>
 
   <div class="stats" id="stats"></div>
 
   <div id="changes"></div>
+
+  <div id="roots"></div>
 
   <div class="controls">
     <input type="search" id="q" placeholder="filter by address, label or admin…" autocomplete="off">
@@ -131,9 +134,30 @@ async function load(){
     renderStats(c);
     render();
     renderChanges();
+    renderRoots();
   }catch(e){
     rows.innerHTML = `<tr><td colspan="8"><div class="err">Could not reach the API: ${e}</div></td></tr>`;
   }
+}
+
+// The largest authorities by indexed proxies: the ranking the product is about. Optional, like
+// the changes: a failure here leaves the proxy table working.
+async function renderRoots(){
+  try{
+    const v = await fetch('/authorities').then(r => r.json());
+    const rows = (v.authorities || []).slice(0, 10);
+    if (!rows.length) return;
+    const name = {safe:'Safe', eoa:'key', timelock:'timelock', smart_account:'smart account', role_gated:'AccessControl', sentinel:'sentinel'};
+    const dur = s => !s ? 'none found' : s % 86400 === 0 && s <= 259200 ? `${s/3600}h` : `${Math.round(s/3600)}h`;
+    document.getElementById('roots').innerHTML = `<p class="sub"><strong>Largest authorities</strong>
+      (${v.count} in all, <a href="/authorities">json</a>). Counts are indexed proxies in a sample.</p>
+      <div class="scroll" style="margin-bottom:1.5rem"><table><thead><tr><th>Authority</th><th>Kind</th>
+      <th>Proxies</th><th>Keys</th><th>Timelock</th><th>Confidence</th></tr></thead><tbody>${rows.map(a => `
+      <tr><td><a href="${page(a.address, a.chain)}">${short(a.address)}</a>${a.chain === 'ethereum' ? ' <span class="mono">ethereum</span>' : ''}</td>
+      <td>${name[a.kind] ?? a.kind}</td><td>${a.proxy_count}</td>
+      <td>${a.compromise_depth ?? '<span class="mono">unknown</span>'}</td>
+      <td>${dur(a.timelock_seconds)}</td><td>${a.confidence}</td></tr>`).join('')}</tbody></table></div>`;
+  }catch(e){}
 }
 
 // Recent chain changes. Optional: a failure here leaves the table working.

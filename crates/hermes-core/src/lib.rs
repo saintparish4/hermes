@@ -5,6 +5,7 @@ pub mod chain;
 pub mod classify;
 pub mod graph;
 pub mod graph_store;
+pub mod policy;
 pub mod slots;
 pub mod store;
 pub mod time;

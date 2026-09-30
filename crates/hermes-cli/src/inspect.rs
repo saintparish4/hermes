@@ -21,7 +21,7 @@ fn show(n: &Node) -> String {
 }
 
 /// An authority kind as the rest of the output words it.
-fn kind_name(kind: &str) -> &str {
+pub(crate) fn kind_name(kind: &str) -> &str {
     match kind {
         "safe" => "Safe",
         "eoa" => "key",

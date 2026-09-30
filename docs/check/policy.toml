@@ -1,0 +1,8 @@
+# Every rule is off unless set. Unknown fails unless allow_unknown = true.
+[policy]
+disallow_eoa_upgrade_admin = true
+minimum_keys_required = 3
+minimum_timelock = "24h"
+allow_cross_chain_authority = true
+allow_smart_account_authority = false
+allow_unknown = false

@@ -1,0 +1,54 @@
+name: Hermes upgrade authority check
+description: Fail the job when a deployed proxy's upgrade authority breaks your policy on keys, delay, or where the root lives.
+author: Sharif Parish
+branding:
+  icon: shield
+  color: gray-dark
+
+inputs:
+  deployments:
+    description: Path to a JSON list of addresses, or of {"name", "address"} objects.
+    required: true
+  policy:
+    description: Path to a TOML file with a [policy] table.
+    required: true
+  rpc-url:
+    description: Base JSON-RPC endpoint. The public one works; a keyed one is faster.
+    default: https://mainnet.base.org
+  l1-rpc-url:
+    description: Ethereum JSON-RPC endpoint, read only to resolve authorities that act on Base through an L1 alias.
+    default: https://eth.drpc.org
+  call-interval-ms:
+    description: Minimum gap between calls to Base. 1000 suits the public endpoint; 0 suits a keyed one.
+    default: "1000"
+
+runs:
+  using: composite
+  steps:
+    # Built from the action's own checkout, so a pinned `uses: …@<sha>` runs exactly that code
+    # and needs no release artifact to exist.
+    - name: Cache the Hermes build
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ${{ github.action_path }}/target
+        key: hermes-check-${{ runner.os }}-${{ github.action_ref || 'local' }}
+
+    - name: Build Hermes
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: cargo build --release --locked -p hermes-cli
+
+    # Inputs reach the command through the environment, never spliced into the script.
+    - name: Check upgrade authorities
+      shell: bash
+      env:
+        HERMES_BIN: ${{ github.action_path }}/target/release/hermes
+        DEPLOYMENTS: ${{ inputs.deployments }}
+        POLICY: ${{ inputs.policy }}
+        HERMES_RPC_URL: ${{ inputs.rpc-url }}
+        HERMES_L1_RPC_URL: ${{ inputs.l1-rpc-url }}
+        HERMES_CALL_INTERVAL_MS: ${{ inputs.call-interval-ms }}
+      run: '"$HERMES_BIN" check "$DEPLOYMENTS" --policy "$POLICY"'

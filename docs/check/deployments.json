@@ -1,0 +1,5 @@
+[
+  { "name": "L2StandardBridge", "address": "0x4200000000000000000000000000000000000010" },
+  { "name": "Beacon proxy handed to a Safe on 2026-09-29", "address": "0x9Caa0e7277ce86A4644F2D10b72561080531b674" },
+  { "name": "Proxy under a ProxyAdmin owned by an EIP-7702 key", "address": "0x034651d50c3Caf5cF91d646ad1a8092738cc7718" }
+]

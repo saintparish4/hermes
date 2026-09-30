@@ -32,6 +32,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower-http = { version = "0.7", features = ["fs", "trace", "cors"] }
 clap = { version = "4", features = ["derive", "env"] }
 futures = "0.3"
+toml = "1"
 # Clippy renamed `cyclomatic_complexity` to `cognitive_complexity` in Rust 1.35; there is no
 # cyclomatic lint any more. It lives in the nursery group, which `-D warnings` never reaches,
 # so it has to be named explicitly here. Threshold is set in `clippy.toml`.

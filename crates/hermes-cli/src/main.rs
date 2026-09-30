@@ -5,6 +5,7 @@
 //! nothing and cost a second build target. `record` and `verify` are developer tools that ride
 //! along because they have to run exactly the pipeline the deployment runs.
 
+mod check;
 mod history;
 mod inspect;
 
@@ -296,6 +297,22 @@ enum Command {
         /// Pin at most this many changes in this run.
         #[arg(long)]
         limit: Option<i64>,
+    },
+    /// Check deployed contracts against an authority policy. Exits 1 on any violation, so a CI
+    /// step fails. An address Hermes cannot read is a violation: the check fails closed.
+    Check {
+        /// JSON: `["0x…"]` or `[{"name": "Vault", "address": "0x…"}]`.
+        deployments: PathBuf,
+        /// A TOML file with a `[policy]` table.
+        #[arg(long)]
+        policy: PathBuf,
+        /// Read the database instead of scanning the chain.
+        #[arg(long)]
+        db: bool,
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        endpoints: Endpoints,
     },
     /// Serve the JSON API and the static page.
     Serve {
@@ -676,6 +693,23 @@ async fn main() -> anyhow::Result<ExitCode> {
             };
             history::diff(&open(&cli.database_url).await?, range, now(), json).await
         }
+        Command::Check {
+            deployments,
+            policy,
+            db,
+            json,
+            endpoints,
+        } => {
+            if db {
+                let store = open(&cli.database_url).await?;
+                check::check(&deployments, &policy, check::Source::Db(&store), json).await
+            } else {
+                check::read_policy(&policy)?;
+                let pinned = endpoints.pinned(1).await?;
+                let source = check::Source::Live(&pinned.scanner, &pinned.authorities);
+                check::check(&deployments, &policy, source, json).await
+            }
+        }
         command => run(&cli.database_url, command)
             .await
             .map(|()| ExitCode::SUCCESS),
@@ -777,6 +811,7 @@ async fn run_offline(store: &Store, db: &str, command: Command) -> anyhow::Resul
             hermes_api::serve(store.clone(), static_dir, port).await
         }
         Command::Diff { .. }
+        | Command::Check { .. }
         | Command::Scan { .. }
         | Command::Discover { .. }
         | Command::Record { .. }

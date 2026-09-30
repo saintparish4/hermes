@@ -118,20 +118,18 @@ fn render(t: &TreeNode, prefix: &str, branch: &str, out: &mut String) {
 fn scope_line(s: &Scope) -> String {
     let as_of = match &s.as_of {
         Some(o) => format!(
-            "graph as of Base block {} / Ethereum block {} ({})",
+            "graph as of Base block {} / Ethereum block {} ({}), read by model {}",
             o.base_block.map_or("?".into(), |b| b.to_string()),
             o.ethereum_block.map_or("?".into(), |b| b.to_string()),
-            short(o.observed_at)
+            short(o.observed_at),
+            o.model_version
         ),
         None => "no scan recorded yet".into(),
     };
     let cap = s
         .per_family
         .map_or(String::new(), |c| format!(", at most {c} per family"));
-    format!(
-        "scope: a sample of Base{cap}; {as_of}; model {}; first seen means first seen by Hermes",
-        s.model_version
-    )
+    format!("scope: a sample of Base{cap}; {as_of}; first seen means first seen by Hermes")
 }
 
 fn print_proxy(v: &ProxyView) {

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermes — authority</title>
+<style>
+  :root{
+    --bg:#f4f1ea; --fg:#1a1a1a; --muted:#4e4d4d; --line:#dcd7cc;
+    --card:#fffdf8; --coral:#ff9473; --sky:#a0b5eb; --mint:#a7fccd;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#141414; --fg:#f0ede6; --muted:#a6a29a; --line:#2e2e2e; --card:#1c1c1c; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:16px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:2rem 1rem}
+  .wrap{max-width:1000px;margin:0 auto}
+  h1{font-size:1.25rem;margin:0 0 .25rem;word-break:break-all}
+  h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:2rem 0 .6rem}
+  .sub{color:var(--muted);margin:0 0 1rem}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:1rem;overflow-x:auto}
+  .facts{display:grid;grid-template-columns:max-content 1fr;gap:.3rem 1.25rem;font-size:.9rem}
+  .facts dt{color:var(--muted)} .facts dd{margin:0;word-break:break-all}
+  ul.tree,ul.tree ul{list-style:none;margin:0;padding-left:1.4rem;border-left:1px solid var(--line)}
+  ul.tree{padding-left:0;border:none}
+  ul.tree li{margin:.25rem 0;font-size:.85rem;white-space:nowrap}
+  .rel{color:var(--muted)}
+  .tag{display:inline-block;padding:.05rem .45rem;border-radius:4px;font-size:.72rem;border:1px solid var(--line);margin-left:.35rem}
+  .key{background:var(--coral);color:#1a1a1a;border-color:transparent}
+  .safe{background:var(--sky);color:#1a1a1a;border-color:transparent}
+  .other{background:var(--mint);color:#1a1a1a;border-color:transparent}
+  table{border-collapse:collapse;width:100%;font-size:.82rem}
+  th,td{padding:.35rem .5rem;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--muted);font-size:.7rem;text-transform:uppercase;letter-spacing:.06em}
+  a{color:inherit}
+  .mono{color:var(--muted)}
+  .err{background:var(--coral);color:#1a1a1a;padding:.75rem 1rem;border-radius:6px}
+  footer{margin-top:2rem;color:var(--muted);font-size:.8rem}
+  form{display:flex;gap:.5rem;margin-bottom:1.5rem;flex-wrap:wrap}
+  input,select,button{background:var(--card);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:.4rem .6rem;font:inherit;font-size:.85rem}
+  input{min-width:min(100%,28rem)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="sub"><a href="/">← Hermes</a> · <a href="/methodology">methodology</a> · <a href="/v1/changes.atom">changes feed</a></p>
+  <form id="f">
+    <input id="addr" placeholder="0x… a proxy, an admin, a Safe or a key" autocomplete="off">
+    <select id="chain"><option value="base">base</option><option value="ethereum">ethereum</option></select>
+    <button>look up</button>
+  </form>
+  <div id="out"></div>
+  <footer id="scope"></footer>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const explorer = n => (n.chain === 'ethereum' ? 'https://etherscan.io/address/' : 'https://basescan.org/address/') + n.address;
+const page = (a, chain) => `/authority.html?address=${a}${chain && chain !== 'base' ? '&chain=' + chain : ''}`;
+const link = n => `<a href="${page(n.address, n.chain)}">${esc(n.address)}</a>${n.chain === 'ethereum' ? ' <span class="mono">(ethereum)</span>' : ''} <a class="mono" href="${explorer(n)}" target="_blank" rel="noopener">↗</a>`;
+const dur = s => { if (!s) return 'none'; const d = Math.floor(s/86400), h = Math.floor(s%86400/3600); return d && !h && d <= 3 ? `${d*24}h` : [d&&d+'d', h&&h+'h', s%3600&&Math.floor(s%3600/60)+'m'].filter(Boolean).join(' '); };
+const kind = t => {
+  switch (t.kind) {
+    case undefined: case null: return ['not read', 'other'];
+    case 'safe': return [`Safe ${t.threshold}-of-${t.owner_count}`, 'safe'];
+    case 'eoa': return [t.code === 'delegated' ? 'key (EIP-7702 delegated)' : 'key', 'key'];
+    case 'ownable': return ['owned contract', 'other'];
+    case 'timelock': return [`timelock, delay ${dur(t.min_delay)}`, 'other'];
+    case 'l1_alias': return ['L2 alias of an Ethereum contract', 'other'];
+    case 'smart_account': return [t.passkeys == null ? 'smart account, signers not read' : `smart account, any one of ${t.children.length + t.passkeys} signers`, 'other'];
+    case 'role_gated': return [t.members_listed ? `AccessControl, ${t.children.length} role holders` : 'AccessControl, holders not listed', 'other'];
+    case 'sentinel': return ['sentinel: no one holds a key', 'other'];
+    default: return ['unrecognized', 'other'];
+  }
+};
+const rel = r => ({uups_self:'the proxy itself (UUPS)', safe_owner:'signer', account_owner:'signer', role_member:'role holder', l1_alias:'acts for', start:''}[r] ?? r);
+function tree(t){
+  const [k, cls] = kind(t);
+  const stop = t.stopped === 'cycle' ? ' <span class="mono">[cycle]</span>' : t.stopped === 'depth' ? ' <span class="mono">[depth cap]</span>' : '';
+  const kids = t.children.length ? `<ul>${t.children.map(tree).join('')}</ul>` : '';
+  return `<li><span class="rel">${esc(rel(t.relation))}</span> ${link(t.node)}<span class="tag ${cls}">${esc(k)}</span>${stop}${kids}</li>`;
+}
+const facts = rows => `<dl class="facts">${rows.filter(r => r).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join('')}</dl>`;
+function reachTable(title, list){
+  if (!list.length) return `<p class="mono">${esc(title)}: none in the index</p>`;
+  return `<p>${esc(title)} (${list.length})</p><table><tr><th>proxy</th><th>kind</th><th>via</th><th>keys</th></tr>${list.map(r =>
+    `<tr><td><a href="${page(r.proxy)}">${esc(r.proxy)}</a>${r.label ? ' ' + esc(r.label) : ''}</td><td>${esc(r.kind)}</td><td>${link(r.entry)}</td><td>${r.keys_required ?? '<span class="mono">unknown</span>'}</td></tr>`).join('')}</table>`;
+}
+function blast(b){
+  return `<h2>What a compromise reaches</h2><div class="card"><p class="mono">Compromising ${b.target.address} takes ${b.compromised.map(n => esc(n.address) + ' on ' + n.chain).join(' and ')}. Only indexed proxies are counted, and the index is a sample, so these are floors.</p>
+    ${reachTable('controls alone', b.controls)}${reachTable('takes part in, not enough alone', b.participates)}${reachTable('reaches, cannot tell whether alone', b.undetermined)}</div>`;
+}
+async function history(address){
+  const r = await fetch(`/v1/changes?address=${address}&limit=100`); if (!r.ok) return '';
+  const v = await r.json(); if (!v.count) return `<h2>History</h2><p class="mono">No recorded changes. History starts when Hermes first saw this address.</p>`;
+  return `<h2>History</h2><div class="card"><table><tr><th>observed</th><th>change</th><th>where</th></tr>${v.changes.map(c =>
+    `<tr><td>${new Date(c.observed_at*1000).toISOString().slice(0,16).replace('T',' ')}Z</td><td>${esc(c.text)}</td><td>${esc(c.when)}</td></tr>`).join('')}</table></div>`;
+}
+function scope(s){
+  const o = s.as_of;
+  $('#scope').innerHTML = `Scope: a sample of Base${s.per_family ? `, at most ${s.per_family} per family` : ''}; ${o ? `graph as of Base block ${o.base_block} / Ethereum block ${o.ethereum_block}, read by model ${o.model_version}` : 'no scan recorded'}; first seen means first seen by Hermes. Hermes states what can upgrade a contract, never whether anyone will.`;
+}
+async function showProxy(v){
+  const p = v.proxy;
+  const kindName = {safe:'Safe', eoa:'key', timelock:'timelock', smart_account:'smart account', role_gated:'AccessControl contract', sentinel:'sentinel', l1_alias:'L2 alias', ownable:'owned contract'};
+  const root = p.terminal_authority ? `${esc(kindName[p.authority_kind] ?? p.authority_kind)} ${link({chain: p.terminal_chain, address: p.terminal_authority})}` : `<span class="mono">none published: ${esc(p.unresolved_reason ?? 'not attempted')}</span>`;
+  $('#out').innerHTML = `<h1>${esc(p.address)}</h1><p class="sub">${esc(p.kind)} proxy on base${p.label ? ' · ' + esc(p.label) : ''} · <a href="https://basescan.org/address/${p.address}" target="_blank" rel="noopener">basescan ↗</a></p>
+    <div class="card">${facts([['root', root],
+      p.terminal_authority && ['keys required', p.compromise_depth ?? `<span class="mono">unknown (${esc(p.depth_unknown_reason)})</span>`],
+      p.terminal_authority && ['timelock', p.timelock_seconds ? dur(p.timelock_seconds) : 'none found'],
+      p.terminal_authority && ['confidence', `${esc(p.resolution_confidence)} (walked from the ${esc((v.upgrade_entry ?? '').replace('_',' '))})`],
+      ['scanned at', `Base block ${p.scanned_block ?? '?'}`]])}</div>
+    <h2>Upgrade path</h2><div class="card">${v.tree ? `<ul class="tree">${tree(v.tree)}</ul>` : '<p class="mono">No upgrade path Hermes models.</p>'}</div>
+    ${await history(p.address)}`;
+  scope(v.scope);
+}
+async function showNode(v){
+  const n = v.node, [k] = kind(v.tree);
+  $('#out').innerHTML = `<h1>${esc(n.node.address)}</h1><p class="sub">${esc(k)} on ${esc(n.node.chain)} · first seen by Hermes at block ${n.first_seen_block ?? '?'}, last seen at ${n.last_seen_block ?? '?'} · <a href="${explorer(n.node)}" target="_blank" rel="noopener">explorer ↗</a></p>
+    <h2>Who controls it</h2><div class="card"><ul class="tree">${tree(v.tree)}</ul></div>
+    ${v.controls_directly.length ? `<h2>Controls directly</h2><div class="card"><table>${v.controls_directly.map(e => `<tr><td>${esc(e.relation)} of</td><td>${link(e.from)}</td></tr>`).join('')}</table></div>` : ''}
+    ${v.owner_of.length ? `<h2>Signer of</h2><div class="card"><table>${v.owner_of.map(m => `<tr><td>Safe ${m.threshold}-of-${m.owner_count}</td><td>${link(m.safe)}</td></tr>`).join('')}</table></div>` : ''}
+    ${blast(v.blast_radius)}${await history(n.node.address)}`;
+  scope(v.scope);
+}
+async function load(address, chain){
+  $('#out').innerHTML = '<p class="mono">loading…</p>';
+  try {
+    if (chain === 'base') {
+      const r = await fetch(`/v1/proxies/${address}`);
+      if (r.ok) return showProxy(await r.json());
+    }
+    const r = await fetch(`/v1/nodes/${chain}/${address}`);
+    if (r.ok) return showNode(await r.json());
+    $('#out').innerHTML = `<div class="err">${esc(address)} is not in the index: neither a scanned proxy nor an address a resolution walked on ${esc(chain)}.</div>`;
+  } catch (e) {
+    $('#out').innerHTML = `<div class="err">Could not reach the API: ${esc(e)}</div>`;
+  }
+}
+const q = new URLSearchParams(location.search);
+$('#addr').value = q.get('address') ?? '';
+$('#chain').value = q.get('chain') ?? 'base';
+$('#f').addEventListener('submit', e => { e.preventDefault(); location.search = `?address=${$('#addr').value.trim()}&chain=${$('#chain').value}`; });
+if (q.get('address')) load(q.get('address'), q.get('chain') ?? 'base');
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Hermes — Base proxy scan</title>
+<title>Hermes — who can change the code on Base</title>
 <style>
   :root{
     --bg:#f4f1ea; --fg:#1a1a1a; --muted:#4e4d4d; --line:#dcd7cc;
@@ -49,7 +49,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Hermes — Base proxy scan</h1>
+  <h1>Hermes — who can change the code on Base</h1>
   <p class="sub">
     Every address below was probed directly for its ERC-1967 / EIP-1822 storage slots on Base
     mainnet, and whatever can upgrade each one (its admin, its beacon, or for UUPS its own
@@ -60,6 +60,8 @@
   </p>
 
   <div class="stats" id="stats"></div>
+
+  <div id="changes"></div>
 
   <div class="controls">
     <input type="search" id="q" placeholder="filter by address, label or admin…" autocomplete="off">
@@ -95,17 +97,20 @@
     pre-1967 <code>org.zeppelinos</code> slot are indexed but <em>not</em> counted as covered —
     USDC on Base is one of them. A pattern this scan cannot see is named here rather than
     silently omitted.</p>
+    <p>Look up any proxy, admin, Safe or key: <a href="/authority.html">/authority.html</a> ·
+       <a href="/methodology">methodology</a> · changes as <a href="/v1/changes.atom">Atom</a> or
+       <a href="/v1/changes">JSON</a></p>
     <p>API: <a href="/proxies">/proxies</a> · <a href="/authorities">/authorities</a> ·
-       <a href="/coverage">/coverage</a></p>
+       <a href="/coverage">/coverage</a> · <a href="/v1/authorities">/v1</a></p>
   </footer>
 </div>
 
 <script>
 const short = a => a ? a.slice(0,10) + '…' + a.slice(-6) : '—';
 const bs = a => `https://basescan.org/address/${a}`;
-const explorer = (a, chain) => chain === 'ethereum' ? `https://etherscan.io/address/${a}` : bs(a);
+const page = (a, chain) => `/authority.html?address=${a}${chain === 'ethereum' ? '&chain=ethereum' : ''}`;
 const root = r => r.terminal_authority
-  ? `<a href="${explorer(r.terminal_authority, r.terminal_chain)}" target="_blank" rel="noopener">${short(r.terminal_authority)}</a>
+  ? `<a href="${page(r.terminal_authority, r.terminal_chain)}">${short(r.terminal_authority)}</a>
      <span class="tag">${r.authority_kind ?? '?'}${r.terminal_chain === 'ethereum' ? ' · ethereum' : ''}${r.upgrade_path && r.upgrade_path !== 'admin_slot' ? ' · via ' + r.upgrade_path.replace('_owner', '') : ''}${r.resolution_confidence === 'medium' ? ' · medium' : ''}</span>`
   : `<span class="mono">unresolved${r.unresolved_reason ? ': ' + r.unresolved_reason.replaceAll('_', ' ') : ''}</span>`;
 const keys = r => r.terminal_authority
@@ -125,9 +130,23 @@ async function load(){
     totalRows = p.total ?? data.length;
     renderStats(c);
     render();
+    renderChanges();
   }catch(e){
     rows.innerHTML = `<tr><td colspan="8"><div class="err">Could not reach the API: ${e}</div></td></tr>`;
   }
+}
+
+// Recent chain changes. Optional: a failure here leaves the table working.
+async function renderChanges(){
+  try{
+    const v = await fetch('/v1/changes?limit=8').then(r => r.json());
+    if (!v.count) return;
+    const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    document.getElementById('changes').innerHTML = `<p class="sub"><strong>Recent changes</strong>
+      (<a href="/v1/changes.atom">feed</a>)</p><ul class="sub">${v.changes.map(c =>
+        `<li><a href="${page(c.subject.address, c.subject.chain)}">${esc(c.text)}</a>
+         <span class="mono">${esc(c.when)}</span></li>`).join('')}</ul>`;
+  }catch(e){}
 }
 
 function renderStats(c){
@@ -157,7 +176,7 @@ function render(){
   document.getElementById('rows').innerHTML = rows.map(r => `
     <tr>
       <td>${r.label ?? '<span class="mono">—</span>'}</td>
-      <td><a href="${bs(r.address)}" target="_blank" rel="noopener">${short(r.address)}</a></td>
+      <td><a href="${page(r.address)}">${short(r.address)}</a> <a class="mono" href="${bs(r.address)}" target="_blank" rel="noopener">↗</a></td>
       <td><span class="tag ${r.kind}">${r.kind}</span></td>
       <td class="mono">${r.implementation ? `<a href="${bs(r.implementation)}" target="_blank" rel="noopener">${short(r.implementation)}</a>` : '—'}</td>
       <td class="mono">${r.admin ? `<a href="${bs(r.admin)}" target="_blank" rel="noopener">${short(r.admin)}</a>` : '—'}</td>

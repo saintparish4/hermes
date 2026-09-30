@@ -97,8 +97,10 @@ struct AuthorityDetail {
 
 pub fn router(store: Store, static_dir: PathBuf) -> Router {
     let index = static_dir.join("index.html");
+    let methodology = static_dir.join("methodology.html");
     Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        .route_service("/methodology", ServeFile::new(methodology))
         .route("/proxies", get(list_proxies))
         // axum 0.8 uses `{param}`, not the `:param` syntax of 0.7 and earlier.
         .route("/proxies/{address}", get(get_proxy))
@@ -550,6 +552,25 @@ mod tests {
         let v = body_json(r).await;
         assert_eq!(v["authority"]["chain"], "ethereum");
         assert_eq!(v["proxies"].as_array().unwrap().len(), 1);
+    }
+
+    /// The page the PRD asked for, served from the same static directory as everything else.
+    #[tokio::test]
+    async fn the_methodology_is_served_at_its_own_path() {
+        let store = Store::open("sqlite::memory:").await.unwrap();
+        let static_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../static");
+        let r = router(store, static_dir)
+            .oneshot(
+                Request::builder()
+                    .uri("/methodology")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let body = r.into_body().collect().await.unwrap().to_bytes();
+        assert!(String::from_utf8_lossy(&body).contains("Unknown is an answer"));
     }
 
     #[tokio::test]

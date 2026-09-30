@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermes — methodology</title>
+<style>
+  :root{ --bg:#f4f1ea; --fg:#1a1a1a; --muted:#4e4d4d; --line:#dcd7cc; --card:#fffdf8; }
+  @media (prefers-color-scheme:dark){ :root{ --bg:#141414; --fg:#f0ede6; --muted:#a6a29a; --line:#2e2e2e; --card:#1c1c1c; } }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:2rem 1rem}
+  .wrap{max-width:74ch;margin:0 auto}
+  h1{font-size:1.4rem;margin:0 0 .5rem} h2{font-size:1rem;margin:2rem 0 .5rem}
+  p,li{color:var(--fg)} .sub{color:var(--muted)}
+  code{background:var(--card);border:1px solid var(--line);border-radius:4px;padding:0 .25rem;font-size:.9em}
+  table{border-collapse:collapse;width:100%;font-size:.85rem;margin:.5rem 0}
+  th,td{padding:.35rem .5rem;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+  a{color:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="sub"><a href="/">← Hermes</a> · <a href="/authority.html">look up an address</a></p>
+<h1>How Hermes knows who can change the code</h1>
+<p>Hermes maps who can upgrade deployed contracts on Base, through every layer between a proxy
+and the keys behind it, and what else those keys reach. It reads storage and calls functions;
+it never reads bytecode for bugs. It states what can upgrade a contract, never whether anyone
+will, and never that a key is compromised.</p>
+
+<h2>What is indexed</h2>
+<p>Addresses come from a hand-curated list and from chain-wide discovery of the three ERC-1967
+events (<code>Upgraded</code>, <code>BeaconUpgraded</code>, <code>AdminChanged</code>). Discovery
+reads 1,000-block windows at fixed positions spread over Base's history and admits at most a
+few addresses per implementation, beacon or admin. <strong>The index is a sample, not a
+census.</strong> Without the cap, clones of a handful of contracts would be most of it. Every
+count Hermes publishes is within the sample, and each API answer carries its scope.</p>
+
+<h2>Classification</h2>
+<p>Each address's ERC-1967 implementation, admin and beacon slots are read directly, plus the
+EIP-1822 and ZeppelinOS slots. Implementation and admin set: transparent. Implementation only:
+UUPS. Beacon: beacon. Admin only: an OP Stack predeploy. Covered kinds are transparent, UUPS,
+beacon, EIP-1822 and admin-only. Inherited storage, eternal storage, Diamond and the ZeppelinOS
+slot are recorded and <em>not</em> counted as covered.</p>
+
+<h2>Where the upgrade walk starts</h2>
+<table>
+<tr><th>Proxy</th><th>Walk starts at</th><th>Most confidence</th></tr>
+<tr><td>Transparent, admin-only</td><td>the ERC-1967 admin</td><td>High</td></tr>
+<tr><td>Beacon</td><td>the beacon, whose controller upgrades every proxy using it</td><td>High</td></tr>
+<tr><td>UUPS</td><td>the proxy itself, only after its implementation answers <code>proxiableUUID()</code> with the ERC-1967 slot</td><td>Medium: what answers does not prove what gates <code>_authorizeUpgrade</code></td></tr>
+</table>
+
+<h2>What each address is</h2>
+<table>
+<tr><th>Answers</th><th>Kind</th><th>Keys</th></tr>
+<tr><td>no code on Base, and none at its unaliased address on Ethereum</td><td>key</td><td>1</td></tr>
+<tr><td>an EIP-7702 delegation designator</td><td>key (delegated)</td><td>1: its private key signs whatever the delegate allows</td></tr>
+<tr><td>no code on Base, code at <code>address − 0x1111…1111</code> on Ethereum</td><td>L1 alias: the walk continues on Ethereum</td><td>those of the Ethereum contract</td></tr>
+<tr><td><code>getOwners()</code> and <code>getThreshold()</code></td><td>Safe</td><td>sum of the m cheapest owners</td></tr>
+<tr><td><code>getMinDelay()</code></td><td>timelock: the delay is read</td><td>unknown: proposer and executor roles are not listed on chain</td></tr>
+<tr><td><code>owner()</code></td><td>owned contract: the walk continues to the owner</td><td>the owner's</td></tr>
+<tr><td>OpenZeppelin <code>AccessControl</code></td><td>role-gated</td><td>the cheapest holder of the upgrade role or of its admin role, when listed</td></tr>
+<tr><td><code>entryPoint()</code></td><td>ERC-4337 smart account</td><td>its cheapest signer, when MultiOwnable; otherwise unknown</td></tr>
+<tr><td><code>0x…dEaD</code>, <code>0xff…ff</code>, precompiles</td><td>sentinel</td><td>none: no one holds these keys</td></tr>
+<tr><td>none of the above</td><td>unrecognized</td><td>no root is published</td></tr>
+</table>
+<p>The walk follows at most four links and stops on a cycle. An unknown owner anywhere under a
+Safe makes the whole count unknown, because the unknown one could be a single key.</p>
+
+<h2>Unknown is an answer</h2>
+<p>A missing number is <code>null</code>, never zero. A covered proxy with no root says why:
+<code>unrecognized_interface</code>, <code>uups_unconfirmed</code>, <code>no_upgrade_path</code>
+or <code>rpc_undetermined</code>. A root with no key count says why too: <code>truncated</code>,
+<code>cycle</code>, <code>owners_unknown</code>, <code>roles_unread</code>,
+<code>account_keys_unread</code> or <code>no_known_key</code>. A call the node would not answer
+is a third outcome, distinct from a contract answering "no", and never becomes a verdict.
+Confidence only falls along a walk.</p>
+
+<h2>History</h2>
+<p>Every scan reads both chains at their finalized blocks and keeps the graph it walked: each
+address's answers, and each edge with the blocks it was first and last seen at and the block it
+closed. A change between two scans is recorded with both blocks, and bisection over archive state
+then pins single-read changes (an owner, a threshold, a delay, a signer, a slot) to the first
+block the new value holds at. A change in how Hermes reads the chain (a new model version) is
+recorded as a <em>reinterpretation</em> and never shown as the chain moving. "First seen" means
+first seen by Hermes; nothing before the first scan of an address is in the store.</p>
+
+<h2>What a compromise reaches</h2>
+<p>For any address, Hermes lists the indexed proxies whose upgrade walk passes through it, in
+three groups: those it controls alone, those whose authority it takes part in without being
+enough alone (one signer of a 2-of-5), and those where the walk cannot tell. A key is taken on
+both chains, since one private key signs for its address everywhere. Nothing is added up across
+groups, and no figure is a dollar figure.</p>
+
+<p class="sub">The limitations are listed in full in
+<a href="https://github.com/saintparish4/hermes/blob/master/LIMITATIONS.md">LIMITATIONS.md</a>.</p>
+</div>
+</body>
+</html>

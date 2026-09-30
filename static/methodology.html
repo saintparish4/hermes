@@ -84,8 +84,8 @@ Confidence only falls along a walk.</p>
 <p>Every scan reads both chains at their finalized blocks and keeps the graph it walked: each
 address's answers, and each edge with the blocks it was first and last seen at and the block it
 closed. A change between two scans is recorded with both blocks, and bisection over archive state
-then pins single-read changes (an owner, a threshold, a delay, a signer, a slot) to the first
-block the new value holds at. A change in how Hermes reads the chain (a new model version) is
+then pins single-read changes (an owner, a Safe threshold or signer, a delay, a slot) to the first
+block the new value holds at; everything else keeps the two scan blocks that bracket it. A change in how Hermes reads the chain (a new model version) is
 recorded as a <em>reinterpretation</em> and never shown as the chain moving. "First seen" means
 first seen by Hermes; nothing before the first scan of an address is in the store.</p>
 

@@ -53,8 +53,9 @@ a finding about any contract.
   seen by Hermes.
 - **Changes are sampled at scan time.** Two changes between scans can read as one, or as none if
   a value changed and changed back. Bisection finds a boundary, not every transition.
-- **Only single-read changes are pinned to a block.** A changed root or key count keeps the two
-  scan blocks that bracket it.
+- **Only single-read changes are pinned to a block**: an owner, a Safe threshold or signer, a
+  timelock delay, a slot. A changed root or key count, a smart account's signers and a role's
+  holders keep the two scan blocks that bracket them.
 - **Full-history backfill needs a keyed endpoint.** The public Base endpoint accepts `eth_getLogs`
   over about 2,000 blocks at a time, even for one address (measured 2026-09-30), so reading a
   contract's whole event history costs tens of thousands of calls.

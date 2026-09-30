@@ -1,6 +1,8 @@
 //! The JSON API and static-file server. This binary is the only API; the frontend has no
 //! server component.
 
+mod v1;
+
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -33,7 +35,21 @@ impl<E: Into<anyhow::Error>> From<E> for ApiError {
     }
 }
 
-type ApiResult<T> = Result<T, ApiError>;
+pub(crate) type ApiResult<T> = Result<T, ApiError>;
+
+pub(crate) fn not_found(error: &str, address: &str) -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": error, "address": address })),
+    )
+        .into_response()
+}
+
+pub(crate) fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
+}
 
 /// Rows per page when a request does not say.
 pub const DEFAULT_PAGE: i64 = 100;
@@ -89,6 +105,7 @@ pub fn router(store: Store, static_dir: PathBuf) -> Router {
         .route("/authorities", get(list_authorities))
         .route("/authorities/{address}", get(get_authority))
         .route("/coverage", get(coverage))
+        .merge(v1::routes())
         .fallback_service(ServeDir::new(static_dir).fallback(ServeFile::new(index)))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
@@ -114,11 +131,7 @@ async fn list_proxies(
 async fn get_proxy(State(store): State<Store>, Path(address): Path<String>) -> ApiResult<Response> {
     match store.get_proxy(&address).await? {
         Some(p) => Ok(Json(p).into_response()),
-        None => Ok((
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({ "error": "unknown address", "address": address })),
-        )
-            .into_response()),
+        None => Ok(not_found("unknown address", &address)),
     }
 }
 
@@ -152,13 +165,7 @@ async fn get_authority(
         .filter(|a| q.chain.is_none() || a.chain == q.chain)
         .collect();
     let authority = match matches.len() {
-        0 => {
-            return Ok((
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({ "error": "unknown authority", "address": address })),
-            )
-                .into_response());
-        }
+        0 => return Ok(not_found("unknown authority", &address)),
         1 => matches.remove(0),
         _ => {
             let chains: Vec<_> = matches.iter().map(|a| a.chain.clone()).collect();

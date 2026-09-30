@@ -5,6 +5,8 @@
 //! nothing and cost a second build target. `record` and `verify` are developer tools that ride
 //! along because they have to run exactly the pipeline the deployment runs.
 
+mod inspect;
+
 use alloy::primitives::Address;
 use alloy::providers::Provider;
 use anyhow::Context;
@@ -209,6 +211,54 @@ enum Command {
     /// This exists so the container can migrate once, alone, before the scan and the server
     /// start together.
     Migrate,
+    /// How a proxy reaches its root, or what an authority is and what it reaches. Reads the
+    /// database only.
+    Authority {
+        address: String,
+        /// Which chain's account, when the address was walked on both.
+        #[arg(long, value_parser = parse_chain)]
+        chain: Option<Chain>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Every indexed proxy a compromise of this address reaches, split by whether it is enough
+    /// alone. Reads the database only.
+    BlastRadius {
+        address: String,
+        #[arg(long, value_parser = parse_chain)]
+        chain: Option<Chain>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// The owners of a Safe, one per line. Reads the database only.
+    Owners {
+        address: String,
+        #[arg(long, value_parser = parse_chain)]
+        chain: Option<Chain>,
+    },
+    /// The walk under a proxy or an authority, as Graphviz DOT or JSON. Reads the database only.
+    Graph {
+        address: String,
+        #[arg(long, value_parser = parse_chain)]
+        chain: Option<Chain>,
+        /// `dot` or `json`.
+        #[arg(long, default_value = "dot")]
+        format: String,
+    },
+    /// One key: the Safes it signs for on each chain, and what it reaches. Reads the database
+    /// only.
+    Key {
+        address: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Pairs of Safes that share signers, across both chains. Reads the database only.
+    Signers {
+        #[arg(long, default_value_t = 2)]
+        min_shared: i64,
+        #[arg(long)]
+        json: bool,
+    },
     /// Serve the JSON API and the static page.
     Serve {
         #[arg(long, env = "PORT", default_value_t = 8080)]
@@ -216,6 +266,10 @@ enum Command {
         #[arg(long, env = "HERMES_STATIC_DIR", default_value = "static")]
         static_dir: PathBuf,
     },
+}
+
+fn parse_chain(s: &str) -> Result<Chain, String> {
+    Chain::parse(s).ok_or_else(|| format!("unknown chain {s}; use base or ethereum"))
 }
 
 fn now() -> i64 {
@@ -614,6 +668,30 @@ async fn main() -> anyhow::Result<()> {
             open(&cli.database_url).await?;
             println!("database at {} is on the current schema", cli.database_url);
             Ok(())
+        }
+        Command::Authority {
+            address,
+            chain,
+            json,
+        } => inspect::authority(&open(&cli.database_url).await?, &address, chain, json).await,
+        Command::BlastRadius {
+            address,
+            chain,
+            json,
+        } => inspect::blast_radius(&open(&cli.database_url).await?, &address, chain, json).await,
+        Command::Owners { address, chain } => {
+            inspect::owners(&open(&cli.database_url).await?, &address, chain).await
+        }
+        Command::Graph {
+            address,
+            chain,
+            format,
+        } => inspect::graph(&open(&cli.database_url).await?, &address, chain, &format).await,
+        Command::Key { address, json } => {
+            inspect::key(&open(&cli.database_url).await?, &address, json).await
+        }
+        Command::Signers { min_shared, json } => {
+            inspect::signers(&open(&cli.database_url).await?, min_shared, json).await
         }
         Command::Serve { port, static_dir } => {
             hermes_api::serve(open(&cli.database_url).await?, static_dir, port).await

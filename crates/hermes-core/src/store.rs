@@ -20,7 +20,7 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
 /// about six seconds, which is several lifetimes of any migration transaction.
 const WAL_ATTEMPTS: u32 = 12;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProxyRecord {
     /// EIP-55 checksummed.
     pub address: String,

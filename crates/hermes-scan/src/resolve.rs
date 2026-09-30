@@ -30,7 +30,7 @@ use tokio::time::Instant;
 /// claiming a billion entries is an allocation big enough to end the scan.
 pub const MAX_OWNERS: usize = 256;
 
-fn selector(signature: &str) -> [u8; 4] {
+pub(crate) fn selector(signature: &str) -> [u8; 4] {
     let hash: B256 = keccak256(signature.as_bytes());
     [hash[0], hash[1], hash[2], hash[3]]
 }
@@ -48,7 +48,7 @@ pub(crate) fn word_to_address_strict(word: &[u8]) -> Option<Address> {
     (!addr.is_zero()).then_some(addr)
 }
 
-fn word_to_u256(word: &[u8]) -> Option<U256> {
+pub(crate) fn word_to_u256(word: &[u8]) -> Option<U256> {
     (word.len() == 32).then(|| U256::from_be_slice(word))
 }
 
@@ -56,7 +56,7 @@ fn word_to_u256(word: &[u8]) -> Option<U256> {
 ///
 /// The offset and the length both come from the callee, so both are checked against the
 /// bytes actually present before anything is allocated.
-fn decode_address_array(data: &[u8]) -> Option<Vec<Address>> {
+pub(crate) fn decode_address_array(data: &[u8]) -> Option<Vec<Address>> {
     let offset = word_to_u256(data.get(..32)?)?;
     let offset: usize = offset.try_into().ok()?;
     let len_at = offset.checked_add(32)?;

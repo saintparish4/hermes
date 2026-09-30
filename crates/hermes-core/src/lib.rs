@@ -1,4 +1,5 @@
 pub mod authority;
+pub mod blast;
 pub mod canary;
 pub mod chain;
 pub mod classify;
@@ -6,7 +7,9 @@ pub mod graph;
 pub mod graph_store;
 pub mod slots;
 pub mod store;
+pub mod time;
 pub mod upgrade;
+pub mod view;
 
 pub use authority::{
     AuthorityKind, AuthorityProbe, Code, Confidence, DepthGap, MAX_DEPTH, Resolution, Unresolved,

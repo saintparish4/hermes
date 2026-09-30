@@ -26,7 +26,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 /// after aliasing was modelled would otherwise have read as 28 authority changes in one night.
 ///
 /// 1. The graph is kept (2026-09-30). Resolution as of the chain-wide index of 2026-09-20.
-pub const MODEL_VERSION: i64 = 1;
+/// 2. EIP-7702 delegated accounts read as keys; ERC-4337 accounts, `AccessControl` contracts
+///    and sentinel addresses recognized; timelock roots say their roles are unread.
+pub const MODEL_VERSION: i64 = 2;
 
 /// How one address stands to another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -45,16 +47,22 @@ pub enum Relation {
     SafeOwner,
     /// A codeless Base address to the Ethereum contract acting through it.
     L1Alias,
+    /// One address signer of a MultiOwnable smart account.
+    AccountOwner,
+    /// One holder of an `AccessControl` contract's upgrade role.
+    RoleMember,
 }
 
 impl Relation {
-    pub const ALL: [Relation; 6] = [
+    pub const ALL: [Relation; 8] = [
         Self::Implementation,
         Self::Admin,
         Self::Beacon,
         Self::Owner,
         Self::SafeOwner,
         Self::L1Alias,
+        Self::AccountOwner,
+        Self::RoleMember,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -65,6 +73,8 @@ impl Relation {
             Self::Owner => "owner",
             Self::SafeOwner => "safe_owner",
             Self::L1Alias => "l1_alias",
+            Self::AccountOwner => "account_owner",
+            Self::RoleMember => "role_member",
         }
     }
 
@@ -73,9 +83,9 @@ impl Relation {
     }
 
     /// Whether the target of this edge decides what the source does: its admin, its beacon, its
-    /// owner, or the L1 contract behind it. A Safe owner is deliberately not one. One owner of
-    /// several takes part in control, and whether it *has* control is a threshold question that
-    /// only `blast::falls` answers.
+    /// owner, or the L1 contract behind it. A signer is deliberately not one, of a Safe, an
+    /// account or a role. One signer of several takes part in control, and whether it *has*
+    /// control is a threshold question that only `blast::falls` answers.
     pub fn is_control(self) -> bool {
         matches!(
             self,
@@ -91,8 +101,8 @@ impl Relation {
 /// changes. That difference is what stops an unanswered read from closing edges.
 pub type EdgeSets = BTreeMap<Relation, BTreeSet<Node>>;
 
-/// The edges a settled probe shows. Every probe answers for all three of its relations: a
-/// codeless address was not asked `owner()` because it cannot have one.
+/// The edges a settled probe shows. Every probe answers for all of its relations: a codeless
+/// address was not asked `owner()` because it cannot have one.
 pub fn probe_edges(node: Node, probe: &AuthorityProbe) -> EdgeSets {
     let on_same_chain = |address: &Address| Node {
         chain: node.chain,
@@ -100,7 +110,7 @@ pub fn probe_edges(node: Node, probe: &AuthorityProbe) -> EdgeSets {
     };
     let alias = match probe.code {
         Code::L1Alias(l1) => BTreeSet::from([Node::ethereum(l1)]),
-        Code::Present | Code::Absent => BTreeSet::new(),
+        Code::Present | Code::Absent | Code::Delegated(_) => BTreeSet::new(),
     };
     EdgeSets::from([
         (
@@ -112,6 +122,24 @@ pub fn probe_edges(node: Node, probe: &AuthorityProbe) -> EdgeSets {
             probe.owners.iter().flatten().map(on_same_chain).collect(),
         ),
         (Relation::L1Alias, alias),
+        (
+            Relation::AccountOwner,
+            probe
+                .account_owners
+                .iter()
+                .flat_map(|o| &o.addresses)
+                .map(on_same_chain)
+                .collect(),
+        ),
+        (
+            Relation::RoleMember,
+            probe
+                .roles
+                .iter()
+                .flat_map(|r| r.members.iter().flatten())
+                .map(on_same_chain)
+                .collect(),
+        ),
     ])
 }
 
@@ -156,10 +184,14 @@ pub enum Field {
     SafeOwnerRemoved,
     SafeThreshold,
     TimelockDelay,
+    AccountOwnerAdded,
+    AccountOwnerRemoved,
+    RoleMemberAdded,
+    RoleMemberRemoved,
 }
 
 impl Field {
-    pub const ALL: [Field; 14] = [
+    pub const ALL: [Field; 18] = [
         Self::Implementation,
         Self::Admin,
         Self::Beacon,
@@ -174,6 +206,10 @@ impl Field {
         Self::SafeOwnerRemoved,
         Self::SafeThreshold,
         Self::TimelockDelay,
+        Self::AccountOwnerAdded,
+        Self::AccountOwnerRemoved,
+        Self::RoleMemberAdded,
+        Self::RoleMemberRemoved,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -192,6 +228,10 @@ impl Field {
             Self::SafeOwnerRemoved => "safe_owner_removed",
             Self::SafeThreshold => "safe_threshold",
             Self::TimelockDelay => "timelock_delay",
+            Self::AccountOwnerAdded => "account_owner_added",
+            Self::AccountOwnerRemoved => "account_owner_removed",
+            Self::RoleMemberAdded => "role_member_added",
+            Self::RoleMemberRemoved => "role_member_removed",
         }
     }
 
@@ -392,11 +432,35 @@ pub fn code_str(code: Code) -> &'static str {
         Code::Present => "present",
         Code::Absent => "absent",
         Code::L1Alias(_) => "l1_alias",
+        Code::Delegated(_) => "delegated",
+    }
+}
+
+/// Signers that joined and left between two probes, as one field each way.
+fn membership(
+    out: &mut Vec<Change>,
+    (added, removed): (Field, Field),
+    before: BTreeSet<Address>,
+    after: BTreeSet<Address>,
+) {
+    for a in after.difference(&before) {
+        out.push(Change {
+            field: added,
+            old: None,
+            new: Some(checksum(*a)),
+        });
+    }
+    for r in before.difference(&after) {
+        out.push(Change {
+            field: removed,
+            old: Some(checksum(*r)),
+            new: None,
+        });
     }
 }
 
 /// What differs between two settled probes of one address.
-pub fn probe_changes(old: &AuthorityProbe, new: &AuthorityProbe) -> Vec<Change> {
+pub fn probe_changes(node: Node, old: &AuthorityProbe, new: &AuthorityProbe) -> Vec<Change> {
     let mut out = Vec::new();
     let text = |s: &str| Some(s.to_string());
     push(
@@ -408,8 +472,8 @@ pub fn probe_changes(old: &AuthorityProbe, new: &AuthorityProbe) -> Vec<Change> 
     push(
         &mut out,
         Field::AuthorityKind,
-        text(authority_kind(old).as_str()),
-        text(authority_kind(new).as_str()),
+        text(authority_kind(node, old).as_str()),
+        text(authority_kind(node, new).as_str()),
     );
     push(
         &mut out,
@@ -417,23 +481,15 @@ pub fn probe_changes(old: &AuthorityProbe, new: &AuthorityProbe) -> Vec<Change> 
         old.owner.map(checksum),
         new.owner.map(checksum),
     );
-    let owners =
-        |p: &AuthorityProbe| -> BTreeSet<Address> { p.owners.iter().flatten().copied().collect() };
-    let (before, after) = (owners(old), owners(new));
-    for added in after.difference(&before) {
-        out.push(Change {
-            field: Field::SafeOwnerAdded,
-            old: None,
-            new: Some(checksum(*added)),
-        });
-    }
-    for removed in before.difference(&after) {
-        out.push(Change {
-            field: Field::SafeOwnerRemoved,
-            old: Some(checksum(*removed)),
-            new: None,
-        });
-    }
+    let set = |v: Option<&Vec<Address>>| -> BTreeSet<Address> {
+        v.into_iter().flatten().copied().collect()
+    };
+    membership(
+        &mut out,
+        (Field::SafeOwnerAdded, Field::SafeOwnerRemoved),
+        set(old.owners.as_ref()),
+        set(new.owners.as_ref()),
+    );
     push(
         &mut out,
         Field::SafeThreshold,
@@ -445,6 +501,18 @@ pub fn probe_changes(old: &AuthorityProbe, new: &AuthorityProbe) -> Vec<Change> 
         Field::TimelockDelay,
         old.min_delay.map(|d| d.to_string()),
         new.min_delay.map(|d| d.to_string()),
+    );
+    membership(
+        &mut out,
+        (Field::AccountOwnerAdded, Field::AccountOwnerRemoved),
+        set(old.account_owners.as_ref().map(|o| &o.addresses)),
+        set(new.account_owners.as_ref().map(|o| &o.addresses)),
+    );
+    membership(
+        &mut out,
+        (Field::RoleMemberAdded, Field::RoleMemberRemoved),
+        set(old.roles.as_ref().and_then(|r| r.members.as_ref())),
+        set(new.roles.as_ref().and_then(|r| r.members.as_ref())),
     );
     out
 }
@@ -509,7 +577,7 @@ mod tests {
     #[test]
     fn a_probe_answers_for_every_relation_it_could_have() {
         let renounced = probe_edges(Node::base(A), &AuthorityProbe::default());
-        assert_eq!(renounced.len(), 3);
+        assert_eq!(renounced.len(), 5);
         assert!(renounced.values().all(BTreeSet::is_empty));
 
         let sets = probe_edges(Node::ethereum(A), &safe(1, &[B, C]));
@@ -615,7 +683,7 @@ mod tests {
 
     #[test]
     fn a_safe_swapping_a_signer_and_its_threshold_says_exactly_that() {
-        let changes = probe_changes(&safe(2, &[A, B]), &safe(1, &[A, C]));
+        let changes = probe_changes(Node::base(A), &safe(2, &[A, B]), &safe(1, &[A, C]));
         let fields: Vec<Field> = changes.iter().map(|c| c.field).collect();
         assert_eq!(
             fields,
@@ -631,7 +699,7 @@ mod tests {
 
     #[test]
     fn owner_order_is_not_a_change() {
-        assert!(probe_changes(&safe(2, &[A, B]), &safe(2, &[B, A])).is_empty());
+        assert!(probe_changes(Node::base(A), &safe(2, &[A, B]), &safe(2, &[B, A])).is_empty());
     }
 
     #[test]
@@ -644,7 +712,7 @@ mod tests {
             owner: Some(B),
             ..Default::default()
         };
-        let changes = probe_changes(&from, &to);
+        let changes = probe_changes(Node::base(C), &from, &to);
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].field, Field::Owner);
         assert_eq!(changes[0].direction(), None, "an address has no direction");

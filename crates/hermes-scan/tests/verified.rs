@@ -138,6 +138,40 @@ fn the_table_is_curated_by_shape() {
         &|r| e(r).unresolved_reason.as_deref() == Some("uups_unconfirmed"),
         "an implementation that denies being UUPS",
     );
+    expect(
+        &|r| e(r).authority_kind.as_deref() == Some("smart_account"),
+        "an ERC-4337 account as a root",
+    );
+    expect(
+        &|r| e(r).depth_unknown_reason.as_deref() == Some("account_keys_unread"),
+        "a smart account whose signers are not read",
+    );
+    expect(
+        &|r| {
+            e(r).authority_kind.as_deref() == Some("role_gated") && e(r).compromise_depth.is_some()
+        },
+        "an AccessControl root whose holders are listed",
+    );
+    expect(
+        &|r| e(r).depth_unknown_reason.as_deref() == Some("roles_unread"),
+        "a root whose role holders are not listed on chain",
+    );
+    expect(
+        &|r| e(r).authority_kind.as_deref() == Some("sentinel"),
+        "a renounced owner",
+    );
+    expect(
+        &|r| e(r).timelock_seconds.is_some_and(|t| t > 0),
+        "a timelock",
+    );
+    expect(
+        &|r| r.name.starts_with("eip7702"),
+        "an EIP-7702 delegated key",
+    );
+    expect(
+        &|r| r.historical,
+        "a root that changed hands, pinned either side",
+    );
     let names: std::collections::HashSet<_> = rows.iter().map(|r| &r.name).collect();
     assert_eq!(names.len(), rows.len(), "fixture names must be unique");
 }

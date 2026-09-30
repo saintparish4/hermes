@@ -8,7 +8,7 @@
 //! here trusts its input structurally.
 
 use crate::chain::Node;
-use alloy::primitives::Address;
+use alloy::primitives::{Address, B256, address};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -33,6 +33,38 @@ pub enum Code {
     /// is only how it appears on L2. Reading "no code" as "EOA" here is the mistake that made
     /// a 2-of-2 Safe eleven keys deep look like one key.
     L1Alias(Address),
+    /// An EIP-7702 delegation designator (`0xef0100` and an address): an externally owned
+    /// account that has pointed its code at another contract.
+    ///
+    /// Still a key. The private key behind it signs for it directly whatever the delegate
+    /// allows, and can re-delegate at will, so the delegate only ever adds ways in. Reading the
+    /// delegate's interface as this account's authority would describe the lock and miss the
+    /// key: 23 of 87 "smart accounts" behind unresolved proxies on 2026-09-30 were these.
+    Delegated(Address),
+}
+
+/// The signers a MultiOwnable account lists (Coinbase Smart Wallet): any one of them signs
+/// for it alone. Owners that are passkeys have no address, so they are counted, not listed.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccountOwners {
+    pub addresses: Vec<Address>,
+    pub passkeys: u32,
+}
+
+/// An OpenZeppelin `AccessControl` contract and the role taken to gate its upgrades.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoleGate {
+    /// `UPGRADER_ROLE()` when the contract has one, else `DEFAULT_ADMIN_ROLE` (zero). A
+    /// convention, not a proof, which is why nothing concluded through a role is High.
+    pub role: B256,
+    /// `getRoleAdmin(role)`: whoever holds it can grant themselves `role` in one transaction,
+    /// so its holders are upgrade authority as surely as `role`'s own. An empty upgrade role
+    /// under a held admin role is not "nobody can upgrade" (measured on Base, 2026-09-30).
+    pub admin_role: B256,
+    /// Every holder of `role` or `admin_role`, when the contract enumerates them. `None` when
+    /// it does not, since members of a plain `AccessControl` are only recoverable from its
+    /// logs, and when the admin role is itself administered by a third role I do not follow.
+    pub members: Option<Vec<Address>>,
 }
 
 /// What one address answered when probed for the interfaces I recognize.
@@ -48,12 +80,19 @@ pub struct AuthorityProbe {
     pub threshold: Option<u32>,
     pub owner: Option<Address>,
     pub min_delay: Option<u64>,
+    /// What `entryPoint()` answered: an ERC-4337 account.
+    pub entry_point: Option<Address>,
+    /// The signer list of a MultiOwnable account, when it is one.
+    pub account_owners: Option<AccountOwners>,
+    /// Present when the contract is an OpenZeppelin `AccessControl`.
+    pub roles: Option<RoleGate>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthorityKind {
-    /// No code on any chain that could act as it. Terminal, and one key away from control.
+    /// No code on any chain that could act as it, or only an EIP-7702 delegation. Terminal, and
+    /// one key away from control.
     Eoa,
     /// Answered both `getOwners()` and `getThreshold()`. Terminal: a Safe is a governance
     /// structure in its own right, and its owners feed the key count rather than the chain.
@@ -65,6 +104,15 @@ pub enum AuthorityKind {
     /// The L2 face of an Ethereum contract. The chain continues on Ethereum, so this is only
     /// ever terminal when the walk ran out of depth standing on it.
     L1Alias,
+    /// Answered `entryPoint()`: an ERC-4337 account, whose own signers are the authority.
+    /// Terminal. Its keys are counted only when its signer scheme is one I read.
+    SmartAccount,
+    /// An OpenZeppelin `AccessControl` contract: whoever holds the upgrade role is the
+    /// authority, any one of them alone. Terminal.
+    RoleGated,
+    /// An address nobody can hold a key for: a burn address or a precompile. Terminal, with no
+    /// key count, because there is no key to count.
+    Sentinel,
     /// Nothing I recognize answered. Never guessed at.
     Unknown,
 }
@@ -77,9 +125,26 @@ impl AuthorityKind {
             Self::Ownable => "ownable",
             Self::Timelock => "timelock",
             Self::L1Alias => "l1_alias",
+            Self::SmartAccount => "smart_account",
+            Self::RoleGated => "role_gated",
+            Self::Sentinel => "sentinel",
             Self::Unknown => "unknown",
         }
     }
+}
+
+/// Addresses no one can hold a key for: the conventional burn addresses and the precompiles.
+///
+/// `owner()` pointing at one of these means the owner renounced, and calling it "one key" would
+/// put a renounced contract at the top of a ranking of keys. The list is explicit rather than a
+/// rule like "any tiny address" because it only has to name what contracts actually renounce
+/// to: `0x…dEaD`, `0xff…ff`, the precompiles every EVM chain has had since Cancun (`0x01` to
+/// `0x0a`) and Base's P-256 verifier (`0x100`).
+pub fn is_sentinel(a: Address) -> bool {
+    const DEAD: Address = address!("000000000000000000000000000000000000dEaD");
+    const P256: Address = address!("0000000000000000000000000000000000000100");
+    let precompile = a.as_slice()[..19].iter().all(|b| *b == 0) && (1..=0x0a).contains(&a[19]);
+    a == DEAD || a == P256 || a == Address::repeat_byte(0xff) || precompile
 }
 
 /// How much of a resolution I am willing to stand behind.
@@ -127,6 +192,9 @@ pub struct Resolution {
     /// The walk stopped at a node nobody answered for. Different from a node that answered
     /// and was not recognized: one is the network's failure, the other is a real finding.
     pub unanswered: bool,
+    /// Why the root's own keys cannot be counted, when that is the reason. `None` leaves the
+    /// reason to the flags above, or to an owner further down.
+    pub root_gap: Option<DepthGap>,
 }
 
 /// Why a resolution has no root I will publish.
@@ -162,6 +230,13 @@ pub enum DepthGap {
     /// Some owner under a Safe could not be identified. One unknown owner could be a single
     /// key, so the whole count is unknown rather than counted without it.
     OwnersUnknown,
+    /// The root is a timelock or an `AccessControl` contract whose role holders it does not
+    /// list. They are only recoverable from its logs.
+    RolesUnread,
+    /// The root is a smart account whose signer scheme I do not read.
+    AccountKeysUnread,
+    /// The root is an address no one holds a key for.
+    NoKnownKey,
 }
 
 impl DepthGap {
@@ -170,6 +245,9 @@ impl DepthGap {
             Self::Truncated => "truncated",
             Self::Cycle => "cycle",
             Self::OwnersUnknown => "owners_unknown",
+            Self::RolesUnread => "roles_unread",
+            Self::AccountKeysUnread => "account_keys_unread",
+            Self::NoKnownKey => "no_known_key",
         }
     }
 }
@@ -194,7 +272,7 @@ impl Resolution {
         } else if self.truncated {
             DepthGap::Truncated
         } else {
-            DepthGap::OwnersUnknown
+            self.root_gap.unwrap_or(DepthGap::OwnersUnknown)
         })
     }
 
@@ -209,10 +287,15 @@ impl Resolution {
 ///
 /// Precedence is documented rather than incidental, because probing is duck typing and duck
 /// typing has no uniqueness guarantee. A contract answering both the Safe and the Timelock
-/// probe resolves as a Safe, and says so by giving up High confidence.
-fn classify(probe: &AuthorityProbe) -> (AuthorityKind, bool) {
+/// probe resolves as a Safe, and says so by giving up High confidence. The kinds added later
+/// (`RoleGated`, `SmartAccount`) come last: the scanner only asks about them when nothing
+/// earlier answered, so they can never shadow an answer the walk already relied on.
+fn classify(node: Node, probe: &AuthorityProbe) -> (AuthorityKind, bool) {
     match probe.code {
-        Code::Absent => return (AuthorityKind::Eoa, false),
+        Code::Absent | Code::Delegated(_) if is_sentinel(node.address) => {
+            return (AuthorityKind::Sentinel, false);
+        }
+        Code::Absent | Code::Delegated(_) => return (AuthorityKind::Eoa, false),
         Code::L1Alias(_) => return (AuthorityKind::L1Alias, false),
         Code::Present => {}
     }
@@ -222,13 +305,17 @@ fn classify(probe: &AuthorityProbe) -> (AuthorityKind, bool) {
         (true, ambiguous, _) => (AuthorityKind::Safe, ambiguous),
         (false, true, _) => (AuthorityKind::Timelock, false),
         (false, false, true) => (AuthorityKind::Ownable, false),
+        (false, false, false) if probe.roles.is_some() => (AuthorityKind::RoleGated, false),
+        (false, false, false) if probe.entry_point.is_some() => {
+            (AuthorityKind::SmartAccount, false)
+        }
         (false, false, false) => (AuthorityKind::Unknown, false),
     }
 }
 
-/// What `probe` makes an address, by the same precedence the walk uses.
-pub fn authority_kind(probe: &AuthorityProbe) -> AuthorityKind {
-    classify(probe).0
+/// What `probe` makes the address at `node`, by the same precedence the walk uses.
+pub fn authority_kind(node: Node, probe: &AuthorityProbe) -> AuthorityKind {
+    classify(node, probe).0
 }
 
 /// Where control passes from a node that is not terminal.
@@ -238,6 +325,7 @@ pub fn authority_kind(probe: &AuthorityProbe) -> AuthorityKind {
 pub fn successor(node: Node, probe: &AuthorityProbe) -> Option<Node> {
     match probe.code {
         Code::L1Alias(l1) => Some(Node::ethereum(l1)),
+        Code::Delegated(_) => None,
         Code::Present | Code::Absent => probe.owner.map(|address| Node {
             chain: node.chain,
             address,
@@ -245,15 +333,24 @@ pub fn successor(node: Node, probe: &AuthorityProbe) -> Option<Node> {
     }
 }
 
-/// Every node whose answers could change how `node` resolves: its Safe owners and its
-/// successor. Collection uses this to decide what to probe next, so the scanner and the walk
-/// can never disagree about which chain an owner lives on.
-pub fn edges(node: Node, probe: &AuthorityProbe) -> Vec<Node> {
-    let mut out: Vec<Node> = probe
+/// The addresses whose keys a terminal node's own key count is made of: a Safe's owners, a
+/// MultiOwnable account's address signers, the holders of an upgrade role.
+pub fn signers(probe: &AuthorityProbe) -> impl Iterator<Item = Address> + '_ {
+    probe
         .owners
         .iter()
         .flatten()
-        .map(|&address| Node {
+        .chain(probe.account_owners.iter().flat_map(|o| &o.addresses))
+        .chain(probe.roles.iter().flat_map(|r| r.members.iter().flatten()))
+        .copied()
+}
+
+/// Every node whose answers could change how `node` resolves: its signers and its successor.
+/// Collection uses this to decide what to probe next, so the scanner and the walk can never
+/// disagree about which chain an owner lives on.
+pub fn edges(node: Node, probe: &AuthorityProbe) -> Vec<Node> {
+    let mut out: Vec<Node> = signers(probe)
+        .map(|address| Node {
             chain: node.chain,
             address,
         })
@@ -300,14 +397,21 @@ fn walk(start: Node, probes: &HashMap<Node, AuthorityProbe>, path: &mut Vec<Node
             return stop;
         };
 
-        let (kind, ambiguous) = classify(probe);
+        let (kind, ambiguous) = classify(current, probe);
         stop.kind = kind;
         if ambiguous {
             stop.confidence = stop.confidence.min(Confidence::Medium);
         }
 
         match kind {
-            AuthorityKind::Eoa | AuthorityKind::Safe => return stop,
+            AuthorityKind::Eoa | AuthorityKind::Safe | AuthorityKind::Sentinel => return stop,
+            // Answering `entryPoint()` proves what a contract is, not who may upgrade what it
+            // controls, and a role taken to be the upgrade role is a convention. Either way the
+            // root is real and the reading of it is not certain.
+            AuthorityKind::SmartAccount | AuthorityKind::RoleGated => {
+                stop.confidence = stop.confidence.min(Confidence::Medium);
+                return stop;
+            }
             AuthorityKind::Unknown => {
                 stop.confidence = Confidence::Unknown;
                 return stop;
@@ -348,46 +452,76 @@ fn keys_required(
         return None;
     }
     let probe = probes.get(&node)?;
-    let cost = match classify(probe).0 {
+    let cost = match classify(node, probe).0 {
         AuthorityKind::Eoa => Some(1),
-        AuthorityKind::Safe => safe_keys_required(node, probe, probes, depth, seen),
+        AuthorityKind::Safe => {
+            let threshold = probe.threshold? as usize;
+            cheapest(
+                node,
+                probe.owners.as_ref()?,
+                0,
+                threshold,
+                probes,
+                depth,
+                seen,
+            )
+        }
+        AuthorityKind::SmartAccount => {
+            let signers = probe.account_owners.as_ref()?;
+            cheapest(
+                node,
+                &signers.addresses,
+                signers.passkeys,
+                1,
+                probes,
+                depth,
+                seen,
+            )
+        }
+        AuthorityKind::RoleGated => {
+            let members = probe.roles.as_ref()?.members.as_ref()?;
+            cheapest(node, members, 0, 1, probes, depth, seen)
+        }
         AuthorityKind::Ownable | AuthorityKind::Timelock | AuthorityKind::L1Alias => {
             keys_required(successor(node, probe)?, probes, depth + 1, seen)
         }
-        AuthorityKind::Unknown => None,
+        AuthorityKind::Sentinel | AuthorityKind::Unknown => None,
     };
     seen.remove(&node);
     cost
 }
 
-/// An m-of-n Safe costs the sum of the **m cheapest** owners, not the first m in array order.
+/// An m-of-n set of signers costs the sum of its **m cheapest** members, not the first m in
+/// array order. A Safe is m-of-n; a MultiOwnable account and an upgrade role are 1-of-n.
 ///
 /// Taking array order is a plausible bug that produces plausible numbers, which is the worst
-/// kind. If any owner's cost is unknown the whole total is unknown: an unrecognized owner
+/// kind. If any member's cost is unknown the whole total is unknown: an unrecognized member
 /// could be a single EOA, so reporting the cheapest m of the ones I do understand would
-/// overstate how many keys an attacker actually needs.
-fn safe_keys_required(
+/// overstate how many keys an attacker actually needs. `passkeys` are signers without an
+/// address, each exactly one key.
+fn cheapest(
     node: Node,
-    probe: &AuthorityProbe,
+    members: &[Address],
+    passkeys: u32,
+    threshold: usize,
     probes: &HashMap<Node, AuthorityProbe>,
     depth: usize,
     seen: &mut HashSet<Node>,
 ) -> Option<u32> {
-    let owners = probe.owners.as_ref()?;
-    let threshold = probe.threshold? as usize;
-    if threshold == 0 || threshold > owners.len() {
+    if threshold == 0 || threshold > members.len() + passkeys as usize {
         return None;
     }
-    let mut costs = owners
+    let mut costs = members
         .iter()
         .map(|&address| {
-            let owner = Node {
+            let member = Node {
                 chain: node.chain,
                 address,
             };
-            keys_required(owner, probes, depth + 1, seen)
+            keys_required(member, probes, depth + 1, seen)
         })
         .collect::<Option<Vec<u32>>>()?;
+    costs.extend(std::iter::repeat_n(1, passkeys as usize));
     costs.sort_unstable();
     Some(
         costs
@@ -395,6 +529,26 @@ fn safe_keys_required(
             .take(threshold)
             .fold(0u32, |acc, c| acc.saturating_add(*c)),
     )
+}
+
+/// Why the root's own keys cannot be counted, when the root's kind is the reason.
+fn root_gap(root: Node, probe: Option<&AuthorityProbe>) -> Option<DepthGap> {
+    let probe = probe?;
+    match classify(root, probe).0 {
+        AuthorityKind::Sentinel => Some(DepthGap::NoKnownKey),
+        AuthorityKind::Timelock => Some(DepthGap::RolesUnread),
+        AuthorityKind::RoleGated => match &probe.roles.as_ref()?.members {
+            None => Some(DepthGap::RolesUnread),
+            // Nobody holds the role or the role that grants it: renounced, as far as any key
+            // I can see goes.
+            Some(members) if members.is_empty() => Some(DepthGap::NoKnownKey),
+            Some(_) => None,
+        },
+        AuthorityKind::SmartAccount if probe.account_owners.is_none() => {
+            Some(DepthGap::AccountKeysUnread)
+        }
+        _ => None,
+    }
 }
 
 /// Resolve an admin to the authority that actually stands behind it.
@@ -422,6 +576,7 @@ pub fn resolve(admin: Node, probes: &HashMap<Node, AuthorityProbe>) -> Resolutio
         truncated: stop.truncated,
         cycle: stop.cycle,
         unanswered: stop.unanswered,
+        root_gap: root_gap(terminal, probes.get(&terminal)),
     }
 }
 
@@ -904,6 +1059,176 @@ mod tests {
         let r = resolve_base(A, &g);
         assert_eq!(r.terminal, Node::ethereum(C));
         assert_eq!(r.compromise_depth, Some(2), "not the Base EOA's one key");
+    }
+
+    fn account(owners: &[Address], passkeys: u32) -> AuthorityProbe {
+        AuthorityProbe {
+            entry_point: Some(address!("0000000071727De22E5E9d8BAf0edAc6f37da032")),
+            account_owners: Some(AccountOwners {
+                addresses: owners.to_vec(),
+                passkeys,
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn role_gated(members: Option<&[Address]>) -> AuthorityProbe {
+        AuthorityProbe {
+            roles: Some(RoleGate {
+                role: B256::ZERO,
+                admin_role: B256::ZERO,
+                members: members.map(<[Address]>::to_vec),
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// An EOA that delegated its code under EIP-7702 is still its key. Its delegate answering
+    /// `entryPoint()` must not turn it into an account whose keys are unread.
+    #[test]
+    fn a_delegated_account_is_its_own_key_whatever_its_delegate_answers() {
+        let delegated = AuthorityProbe {
+            code: Code::Delegated(address!("7702cb554e6bfb442cb743a7df23154544a7176c")),
+            entry_point: Some(B),
+            ..Default::default()
+        };
+        let r = resolve_base(A, &graph(&[(A, delegated)]));
+        assert_eq!(r.kind, AuthorityKind::Eoa);
+        assert_eq!(r.compromise_depth, Some(1));
+        assert_eq!(r.confidence, Confidence::High);
+    }
+
+    #[test]
+    fn a_renounced_owner_is_a_root_with_no_key_to_count() {
+        for sentinel in [
+            Address::repeat_byte(0xff),
+            address!("000000000000000000000000000000000000dEaD"),
+            Address::with_last_byte(1),
+        ] {
+            let r = resolve_base(A, &graph(&[(A, ownable(sentinel)), (sentinel, eoa())]));
+            assert_eq!(r.kind, AuthorityKind::Sentinel, "{sentinel}");
+            assert_eq!(r.terminal, Node::base(sentinel));
+            assert_eq!(r.compromise_depth, None, "no one holds this key");
+            assert_eq!(r.depth_gap(), Some(DepthGap::NoKnownKey));
+        }
+    }
+
+    #[test]
+    fn only_addresses_nobody_can_hold_a_key_for_are_sentinels() {
+        for sentinel in [
+            address!("000000000000000000000000000000000000000a"),
+            address!("0000000000000000000000000000000000000100"),
+            address!("000000000000000000000000000000000000dEaD"),
+        ] {
+            assert!(is_sentinel(sentinel), "{sentinel}");
+        }
+        for key in [
+            Address::ZERO,
+            address!("000000000000000000000000000000000000000b"),
+            address!("0000000000000000000000000000000000000101"),
+            address!("21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc"),
+        ] {
+            assert!(!is_sentinel(key), "{key}");
+        }
+    }
+
+    #[test]
+    fn a_smart_account_whose_scheme_is_unread_is_a_medium_root_without_keys() {
+        let unread = AuthorityProbe {
+            entry_point: Some(B),
+            ..Default::default()
+        };
+        let r = resolve_base(A, &graph(&[(C, ownable(A)), (A, unread)]));
+        assert_eq!(r.kind, AuthorityKind::SmartAccount);
+        assert_eq!(r.terminal, Node::base(A));
+        assert_eq!(r.confidence, Confidence::Medium);
+        assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.unresolved(), None, "the account is a real root");
+        assert_eq!(r.depth_gap(), Some(DepthGap::AccountKeysUnread));
+    }
+
+    /// Any one signer of a MultiOwnable account signs alone, so it costs its cheapest signer.
+    /// A passkey is one key with no address.
+    #[test]
+    fn a_multi_owner_account_costs_its_cheapest_signer() {
+        let passkey = graph(&[
+            (A, account(&[B], 1)),
+            (B, safe(2, &[C, D])),
+            (C, eoa()),
+            (D, eoa()),
+        ]);
+        assert_eq!(resolve_base(A, &passkey).compromise_depth, Some(1));
+        let only_a_safe = graph(&[
+            (A, account(&[B], 0)),
+            (B, safe(2, &[C, D])),
+            (C, eoa()),
+            (D, eoa()),
+        ]);
+        assert_eq!(resolve_base(A, &only_a_safe).compromise_depth, Some(2));
+        let unknown_signer = graph(&[(A, account(&[B], 1))]);
+        assert_eq!(
+            resolve_base(A, &unknown_signer).compromise_depth,
+            None,
+            "one unknown signer poisons the count, as it does for a Safe"
+        );
+        assert_eq!(
+            resolve_base(A, &unknown_signer).depth_gap(),
+            Some(DepthGap::OwnersUnknown)
+        );
+    }
+
+    #[test]
+    fn an_upgrade_role_costs_its_cheapest_holder_and_an_unlisted_one_is_unread() {
+        let listed = graph(&[
+            (A, role_gated(Some(&[B, C]))),
+            (B, safe(2, &[D, E])),
+            (C, eoa()),
+            (D, eoa()),
+            (E, eoa()),
+        ]);
+        let r = resolve_base(A, &listed);
+        assert_eq!(r.kind, AuthorityKind::RoleGated);
+        assert_eq!(r.compromise_depth, Some(1));
+        assert_eq!(
+            r.confidence,
+            Confidence::Medium,
+            "the upgrade role is a convention"
+        );
+        let unlisted = resolve_base(A, &graph(&[(A, role_gated(None))]));
+        assert_eq!(unlisted.compromise_depth, None);
+        assert_eq!(unlisted.depth_gap(), Some(DepthGap::RolesUnread));
+        let empty = resolve_base(A, &graph(&[(A, role_gated(Some(&[])))]));
+        assert_eq!(
+            empty.compromise_depth, None,
+            "a role nobody holds has no key count"
+        );
+        assert_eq!(empty.depth_gap(), Some(DepthGap::NoKnownKey));
+    }
+
+    #[test]
+    fn a_timelock_at_the_root_says_its_roles_are_unread() {
+        let r = resolve_base(A, &graph(&[(A, timelock(172_800, None))]));
+        assert_eq!(r.kind, AuthorityKind::Timelock);
+        assert_eq!(r.depth_gap(), Some(DepthGap::RolesUnread));
+    }
+
+    #[test]
+    fn signers_of_every_kind_are_edges_to_probe() {
+        let e = edges(Node::base(A), &account(&[B], 2));
+        assert_eq!(e, vec![Node::base(B)]);
+        let e = edges(Node::ethereum(A), &role_gated(Some(&[C, D])));
+        assert_eq!(e, vec![Node::ethereum(C), Node::ethereum(D)]);
+    }
+
+    /// Kinds recognized later rank after the ones the walk always relied on, so a contract
+    /// that answers `owner()` is still walked through its owner.
+    #[test]
+    fn an_owned_contract_that_is_also_an_account_is_walked_through_its_owner() {
+        let mut both = account(&[C], 0);
+        both.owner = Some(B);
+        let r = resolve_base(A, &graph(&[(A, both), (B, eoa()), (C, eoa())]));
+        assert_eq!(r.terminal, Node::base(B));
+        assert_eq!(r.kind, AuthorityKind::Eoa);
     }
 
     /// Running out of depth on the alias itself leaves the alias as the answer, and says so.

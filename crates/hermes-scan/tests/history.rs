@@ -147,6 +147,13 @@ async fn walking_the_stored_graph_reproduces_every_published_root() {
         "uups-owner",
         "usd-plus",
         "sep29-after",
+        "eip7702-self",
+        "eip7702-behind-admin",
+        "multi-owner-account",
+        "unread-account",
+        "role-admin-holder",
+        "renounced-to-sentinel",
+        "timelock-72h",
     ];
     for name in names {
         let f = fixture(name);

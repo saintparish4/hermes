@@ -587,7 +587,7 @@ async fn write_node(
     )
     .bind(node.chain.as_str())
     .bind(checksum(node.address))
-    .bind(authority_kind(probe).as_str())
+    .bind(authority_kind(node, probe).as_str())
     .bind(graph::code_str(probe.code))
     .bind(probe.threshold.map(i64::from))
     .bind(probe.owners.as_ref().map(|o| o.len() as i64))
@@ -606,7 +606,7 @@ async fn write_node(
     let Some(old) = old else {
         return Ok(Vec::new());
     };
-    Ok(graph::probe_changes(&old.probe, probe)
+    Ok(graph::probe_changes(node, &old.probe, probe)
         .into_iter()
         .map(|change| PendingEvent {
             subject_type: SubjectType::Node,

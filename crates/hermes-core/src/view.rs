@@ -48,9 +48,16 @@ pub struct TreeNode {
     pub relation: String,
     /// What it answered, or `None` when it was never read.
     pub kind: Option<String>,
+    /// `present`, `absent`, `l1_alias` or `delegated` (EIP-7702).
+    pub code: Option<String>,
     pub threshold: Option<u32>,
     pub owner_count: Option<usize>,
     pub min_delay: Option<u64>,
+    /// Signers of a smart account that are passkeys, which have no address to show.
+    pub passkeys: Option<u32>,
+    /// The upgrade role of an `AccessControl` contract, and whether its holders were listed.
+    pub role: Option<alloy::primitives::B256>,
+    pub members_listed: Option<bool>,
     pub children: Vec<TreeNode>,
     /// Why the tree stops here when the node is not terminal: `not_read`, `cycle` or `depth`.
     pub stopped: Option<&'static str>,
@@ -68,40 +75,54 @@ fn grow(
     depth: usize,
     path: &mut HashSet<Node>,
 ) -> TreeNode {
-    let mut t = TreeNode {
-        node,
-        relation: relation.to_string(),
-        kind: None,
-        threshold: None,
-        owner_count: None,
-        min_delay: None,
-        children: Vec::new(),
-        stopped: None,
-    };
+    let mut t = grow_leaf(node, relation);
     let Some(probe) = probes.get(&node) else {
         t.stopped = Some("not_read");
         return t;
     };
-    let kind = authority_kind(probe);
+    let kind = authority_kind(node, probe);
     t.kind = Some(kind.as_str().to_string());
+    t.code = Some(graph::code_str(probe.code).to_string());
     t.threshold = probe.threshold;
     t.owner_count = probe.owners.as_ref().map(Vec::len);
     t.min_delay = probe.min_delay;
-    let next: Vec<(Node, &str)> = match kind {
-        AuthorityKind::Safe => probe
-            .owners
-            .iter()
-            .flatten()
-            .map(|&address| {
+    t.passkeys = probe.account_owners.as_ref().map(|o| o.passkeys);
+    t.role = probe.roles.as_ref().map(|r| r.role);
+    t.members_listed = probe.roles.as_ref().map(|r| r.members.is_some());
+    let signers = |list: Vec<Address>, r: Relation| -> Vec<(Node, &'static str)> {
+        list.into_iter()
+            .map(|address| {
                 (
                     Node {
                         chain: node.chain,
                         address,
                     },
-                    Relation::SafeOwner.as_str(),
+                    r.as_str(),
                 )
             })
-            .collect(),
+            .collect()
+    };
+    let next: Vec<(Node, &str)> = match kind {
+        AuthorityKind::Safe => signers(
+            probe.owners.clone().unwrap_or_default(),
+            Relation::SafeOwner,
+        ),
+        AuthorityKind::SmartAccount => signers(
+            probe
+                .account_owners
+                .as_ref()
+                .map(|o| o.addresses.clone())
+                .unwrap_or_default(),
+            Relation::AccountOwner,
+        ),
+        AuthorityKind::RoleGated => signers(
+            probe
+                .roles
+                .as_ref()
+                .and_then(|r| r.members.clone())
+                .unwrap_or_default(),
+            Relation::RoleMember,
+        ),
         AuthorityKind::Ownable | AuthorityKind::Timelock => successor(node, probe)
             .map(|n| (n, Relation::Owner.as_str()))
             .into_iter()
@@ -110,7 +131,7 @@ fn grow(
             .map(|n| (n, Relation::L1Alias.as_str()))
             .into_iter()
             .collect(),
-        AuthorityKind::Eoa | AuthorityKind::Unknown => Vec::new(),
+        AuthorityKind::Eoa | AuthorityKind::Sentinel | AuthorityKind::Unknown => Vec::new(),
     };
     if next.is_empty() {
         return t;
@@ -145,9 +166,13 @@ fn grow_leaf(node: Node, relation: &str) -> TreeNode {
         node,
         relation: relation.to_string(),
         kind: None,
+        code: None,
         threshold: None,
         owner_count: None,
         min_delay: None,
+        passkeys: None,
+        role: None,
+        members_listed: None,
         children: Vec::new(),
         stopped: None,
     }

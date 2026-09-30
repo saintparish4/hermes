@@ -108,13 +108,22 @@ pub async fn finalized_block(provider: &DynProvider) -> anyhow::Result<u64> {
     Err(last.unwrap_or_else(|| anyhow::anyhow!("no attempt made")))
 }
 
-/// What a code read established. The scanner only ever asks whether code exists and how big
-/// it is, so that is what a fixture keeps; the hash is there so a human can check it against
-/// an explorer.
+/// What a code read established. The scanner asks whether code exists, how big it is, and
+/// whether it is an EIP-7702 delegation, so that is what a fixture keeps; the hash is there so a
+/// human can check it against an explorer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodeRead {
     pub size: usize,
     pub keccak256: B256,
+    /// The delegate, when the code is an EIP-7702 designator. Absent from fixtures recorded
+    /// before delegation was read, which is what those accounts were: not delegated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delegation: Option<Address>,
+}
+
+/// The account an EIP-7702 designator delegates to: exactly `0xef0100` and twenty bytes.
+pub fn delegation(code: &[u8]) -> Option<Address> {
+    (code.len() == 23 && code[..3] == [0xef, 0x01, 0x00]).then(|| Address::from_slice(&code[3..]))
 }
 
 /// How an `eth_call` settled. Transport failures are never recorded: they are the node's
@@ -192,6 +201,7 @@ impl ChainRpc for RecordingRpc {
             let read = CodeRead {
                 size: code.len(),
                 keccak256: keccak256(&code),
+                delegation: delegation(&code),
             };
             self.keep(|r| {
                 r.code.insert(address, read);
@@ -275,9 +285,13 @@ impl ChainRpc for ReplayRpc {
             .get(&address)
             .copied()
             .unwrap_or_else(|| self.miss(format!("eth_getCode {address}")));
-        // The scanner reads only emptiness and length, so a stand-in of the right size is a
-        // faithful replay of everything it can observe.
-        Box::pin(async move { Ok(Bytes::from(vec![0u8; read.size])) })
+        // The scanner reads emptiness, length and a delegation designator, so a stand-in of the
+        // right size, or the designator itself, is a faithful replay of all it can observe.
+        let bytes = match read.delegation {
+            Some(delegate) => [&[0xef, 0x01, 0x00][..], delegate.as_slice()].concat(),
+            None => vec![0u8; read.size],
+        };
+        Box::pin(async move { Ok(Bytes::from(bytes)) })
     }
 
     fn call(&self, to: Address, input: Bytes) -> BoxFuture<'_, anyhow::Result<Bytes>> {
@@ -337,6 +351,7 @@ mod tests {
                 keccak256: b256!(
                     "0000000000000000000000000000000000000000000000000000000000000001"
                 ),
+                delegation: None,
             },
         );
         base.call.entry(a).or_default().insert(
@@ -389,6 +404,43 @@ mod tests {
             B256::repeat_byte(1)
         );
         assert_eq!(rpc.reads_answered(), 4);
+    }
+
+    #[test]
+    fn only_an_exact_designator_is_a_delegation() {
+        let delegate = alloy::primitives::address!("7702cb554e6bfb442cb743a7df23154544a7176c");
+        let designator = [&[0xef, 0x01, 0x00][..], delegate.as_slice()].concat();
+        assert_eq!(delegation(&designator), Some(delegate));
+        assert_eq!(delegation(&designator[..22]), None, "too short");
+        assert_eq!(
+            delegation(&[designator.as_slice(), &[0]].concat()),
+            None,
+            "too long"
+        );
+        let mut wrong = designator.clone();
+        wrong[2] = 0x01;
+        assert_eq!(delegation(&wrong), None);
+    }
+
+    /// Replay has to hand the scanner the designator, or a delegated key recorded at a pinned
+    /// block would replay as an ordinary contract.
+    #[tokio::test]
+    async fn a_recorded_delegation_replays_as_the_designator() {
+        let delegate = Address::repeat_byte(7);
+        let mut reads = ChainReads::default();
+        reads.code.insert(
+            Address::ZERO,
+            CodeRead {
+                size: 23,
+                keccak256: B256::ZERO,
+                delegation: Some(delegate),
+            },
+        );
+        let code = ReplayRpc::new("t", reads)
+            .code(Address::ZERO)
+            .await
+            .unwrap();
+        assert_eq!(delegation(&code), Some(delegate));
     }
 
     #[tokio::test]

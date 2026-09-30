@@ -12,11 +12,13 @@
 //! authority may really live: an L1 contract acts on L2 through an aliased address that has no
 //! code of its own, so "no code on Base" is a question for L1 before it is an answer.
 
-use crate::rpc::ChainRpc;
+use crate::rpc::{ChainRpc, delegation};
 use alloy::primitives::{Address, B256, Bytes, U256, keccak256};
 use futures::stream::{self, StreamExt};
+use hermes_core::authority::{AccountOwners, RoleGate};
 use hermes_core::{
-    AuthorityProbe, Chain, Code, IMPL_SLOT, MAX_DEPTH, Node, edges, undo_l1_to_l2_alias,
+    AuthorityKind, AuthorityProbe, Chain, Code, IMPL_SLOT, MAX_DEPTH, Node, authority_kind, edges,
+    undo_l1_to_l2_alias,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -51,6 +53,32 @@ pub(crate) fn word_to_address_strict(word: &[u8]) -> Option<Address> {
 pub(crate) fn word_to_u256(word: &[u8]) -> Option<U256> {
     (word.len() == 32).then(|| U256::from_be_slice(word))
 }
+
+/// `selector` followed by 32-byte arguments.
+pub(crate) fn calldata(signature: &str, args: &[[u8; 32]]) -> Vec<u8> {
+    let mut out = selector(signature).to_vec();
+    for a in args {
+        out.extend_from_slice(a);
+    }
+    out
+}
+
+/// A count a contract returned, as a length I am willing to allocate for.
+fn bounded_count(data: &[u8]) -> Option<usize> {
+    let n: usize = word_to_u256(data)?.try_into().ok()?;
+    (n <= MAX_OWNERS).then_some(n)
+}
+
+/// Decode `bytes` return data, with the offset and length checked against what is present.
+pub(crate) fn decode_bytes(data: &[u8]) -> Option<&[u8]> {
+    let offset: usize = word_to_u256(data.get(..32)?)?.try_into().ok()?;
+    let len_at = offset.checked_add(32)?;
+    let len: usize = word_to_u256(data.get(offset..len_at)?)?.try_into().ok()?;
+    data.get(len_at..len_at.checked_add(len)?)
+}
+
+/// `type(IAccessControl).interfaceId`, which a test derives from the five selectors it XORs.
+const IACCESS_CONTROL: [u8; 4] = [0x79, 0x65, 0xdb, 0x0b];
 
 /// Decode `address[]` return data.
 ///
@@ -224,8 +252,8 @@ impl AuthorityScanner {
     /// The three outcomes must stay distinct. Collapsing `Undetermined` into "no answer" is
     /// how a rate-limited `getOwners()` turns a Safe into an `Ownable` — the threshold
     /// vanishes, the owner set vanishes, and the key count silently drops to one.
-    async fn call(&self, node: Node, sel: [u8; 4]) -> CallOutcome {
-        let input = Bytes::from(sel.to_vec());
+    async fn call(&self, node: Node, input: &[u8]) -> CallOutcome {
+        let input = Bytes::from(input.to_vec());
         for attempt in 0..RETRIES {
             match self
                 .rpc(node.chain)
@@ -251,10 +279,10 @@ impl AuthorityScanner {
         CallOutcome::Undetermined
     }
 
-    async fn read_code_is_empty(&self, node: Node) -> Option<bool> {
+    async fn read_code(&self, node: Node) -> Option<Bytes> {
         for attempt in 0..RETRIES {
             match self.rpc(node.chain).await.code(node.address).await {
-                Ok(code) => return Some(code.is_empty()),
+                Ok(code) => return Some(code),
                 Err(e) => {
                     note_retry(node, "eth_getCode", attempt, &e);
                     backoff(attempt).await;
@@ -265,28 +293,38 @@ impl AuthorityScanner {
         None
     }
 
+    /// An address's code, with an empty answer read twice before I believe it.
+    ///
+    /// The public Base endpoint returns `0x` for contracts that have code often enough under
+    /// load that one sighting of nothing proves nothing, which is the rule the slot scan
+    /// follows too. `None` when the node would not tell me.
+    async fn confirmed_code(&self, node: Node) -> Option<Bytes> {
+        let first = self.read_code(node).await?;
+        if !first.is_empty() {
+            return Some(first);
+        }
+        tokio::time::sleep(CONFIRM_DELAY).await;
+        self.read_code(node).await
+    }
+
     /// Whether an address has no code, or `None` when the node would not tell me.
     ///
     /// This distinction is the whole ballgame. A failed code read defaulting to "empty" would
     /// classify the address as an EOA — a *terminal* answer costing exactly one key. A rate
     /// limit would silently become the most alarming possible verdict, stated with High
     /// confidence, on an address I learned nothing about.
-    ///
-    /// For the same reason an empty answer is read twice before I believe it, the rule the
-    /// slot scan already follows: the public Base endpoint returns `0x` for contracts that
-    /// have code often enough under load that one sighting of nothing proves nothing.
     async fn code_is_empty(&self, node: Node) -> Option<bool> {
-        if !self.read_code_is_empty(node).await? {
-            return Some(false);
-        }
-        tokio::time::sleep(CONFIRM_DELAY).await;
-        self.read_code_is_empty(node).await
+        Some(self.confirmed_code(node).await?.is_empty())
     }
 
-    /// What an address is as far as code goes, on its own chain and, for a codeless Base
-    /// address, on Ethereum behind its alias.
+    /// What an address is as far as code goes: code, an EIP-7702 delegation, or none on its
+    /// own chain and, for a codeless Base address, on Ethereum behind its alias.
     async fn code(&self, node: Node) -> Option<Code> {
-        if !self.code_is_empty(node).await? {
+        let code = self.confirmed_code(node).await?;
+        if let Some(delegate) = delegation(&code) {
+            return Some(Code::Delegated(delegate));
+        }
+        if !code.is_empty() {
             return Some(Code::Present);
         }
         match node.chain {
@@ -315,14 +353,17 @@ impl AuthorityScanner {
                 ..Default::default()
             });
         }
-        let owners = self.call(node, selector("getOwners()")).await.settled()?;
+        let owners = self.call(node, &selector("getOwners()")).await.settled()?;
         let threshold = self
-            .call(node, selector("getThreshold()"))
+            .call(node, &selector("getThreshold()"))
             .await
             .settled()?;
-        let owner = self.call(node, selector("owner()")).await.settled()?;
-        let min_delay = self.call(node, selector("getMinDelay()")).await.settled()?;
-        Some(AuthorityProbe {
+        let owner = self.call(node, &selector("owner()")).await.settled()?;
+        let min_delay = self
+            .call(node, &selector("getMinDelay()"))
+            .await
+            .settled()?;
+        let mut probe = AuthorityProbe {
             code,
             owners: owners.and_then(|b| decode_address_array(&b)),
             // Saturating rather than truncating: a `u256 -> u32` cast that wraps turns
@@ -334,7 +375,173 @@ impl AuthorityScanner {
             min_delay: min_delay
                 .and_then(|b| word_to_u256(&b))
                 .map(|v| v.saturating_to::<u64>()),
-        })
+            ..Default::default()
+        };
+        if authority_kind(node, &probe) == AuthorityKind::Unknown {
+            self.probe_further(node, &mut probe).await?;
+        }
+        Some(probe)
+    }
+
+    /// The kinds recognized after the first four, asked only of a contract that answered none
+    /// of those. Nothing already resolved pays for them, and they cannot shadow an answer the
+    /// walk relied on before they existed.
+    async fn probe_further(&self, node: Node, probe: &mut AuthorityProbe) -> Option<()> {
+        probe.entry_point = self
+            .call(node, &selector("entryPoint()"))
+            .await
+            .settled()?
+            .and_then(|b| word_to_address_strict(&b));
+        if probe.entry_point.is_some() {
+            probe.account_owners = self.account_owners(node).await?;
+            return Some(());
+        }
+        probe.roles = self.role_gate(node).await?;
+        Some(())
+    }
+
+    /// The signers of a MultiOwnable account (Coinbase Smart Wallet): `ownerAtIndex(i)` for
+    /// every index below `nextOwnerIndex()`, where 32 bytes is an address, 64 bytes a passkey,
+    /// and nothing a removed owner. `Some(None)` for an account that is not MultiOwnable, or one
+    /// whose list I cannot read in full; a partial signer list is not a signer list.
+    async fn account_owners(&self, node: Node) -> Option<Option<AccountOwners>> {
+        let Some(next) = self
+            .call(node, &selector("nextOwnerIndex()"))
+            .await
+            .settled()?
+        else {
+            return Some(None);
+        };
+        let Some(n) = bounded_count(&next) else {
+            return Some(None);
+        };
+        let mut owners = AccountOwners::default();
+        for i in 0..n {
+            let input = calldata("ownerAtIndex(uint256)", &[U256::from(i).to_be_bytes()]);
+            let Some(raw) = self.call(node, &input).await.settled()? else {
+                return Some(None);
+            };
+            match decode_bytes(&raw) {
+                Some([]) => {}
+                Some(word) if word.len() == 32 => match word_to_address_strict(word) {
+                    Some(a) => owners.addresses.push(a),
+                    None => return Some(None),
+                },
+                Some(key) if key.len() == 64 => owners.passkeys += 1,
+                _ => return Some(None),
+            }
+        }
+        Some(Some(owners))
+    }
+
+    /// An OpenZeppelin `AccessControl` contract: `supportsInterface` says so and
+    /// `DEFAULT_ADMIN_ROLE()` is the zero word, both exactly. Its upgrade role is
+    /// `UPGRADER_ROLE()` when it has one, else the admin role.
+    async fn role_gate(&self, node: Node) -> Option<Option<RoleGate>> {
+        let mut interface = [0u8; 32];
+        interface[..4].copy_from_slice(&IACCESS_CONTROL);
+        let supports = self
+            .call(node, &calldata("supportsInterface(bytes4)", &[interface]))
+            .await
+            .settled()?;
+        if !supports.is_some_and(|b| word_to_u256(&b) == Some(U256::from(1))) {
+            return Some(None);
+        }
+        let admin = self
+            .call(node, &selector("DEFAULT_ADMIN_ROLE()"))
+            .await
+            .settled()?;
+        if !admin.is_some_and(|b| b.len() == 32 && b.iter().all(|x| *x == 0)) {
+            return Some(None);
+        }
+        let role = self
+            .call(node, &selector("UPGRADER_ROLE()"))
+            .await
+            .settled()?
+            .filter(|b| b.len() == 32)
+            .map_or(B256::ZERO, |b| B256::from_slice(&b));
+        let Some(admin_role) = self.role_admin(node, role).await? else {
+            return Some(Some(RoleGate {
+                role,
+                admin_role: B256::ZERO,
+                members: None,
+            }));
+        };
+        Some(Some(RoleGate {
+            role,
+            admin_role,
+            members: self.role_and_admin_members(node, role, admin_role).await?,
+        }))
+    }
+
+    /// `getRoleAdmin(role)`, or `Some(None)` when it is not answered as a role.
+    async fn role_admin(&self, node: Node, role: B256) -> Option<Option<B256>> {
+        let answer = self
+            .call(node, &calldata("getRoleAdmin(bytes32)", &[role.0]))
+            .await
+            .settled()?;
+        Some(
+            answer
+                .filter(|b| b.len() == 32)
+                .map(|b| B256::from_slice(&b)),
+        )
+    }
+
+    /// Holders of the upgrade role and of the role that administers it. Only when the admin
+    /// role administers itself (as `DEFAULT_ADMIN_ROLE` does) or is the upgrade role: a third
+    /// role granting the admin role would be one more link I do not follow, and a member list
+    /// that stopped short of it would undercount.
+    async fn role_and_admin_members(
+        &self,
+        node: Node,
+        role: B256,
+        admin_role: B256,
+    ) -> Option<Option<Vec<Address>>> {
+        if admin_role != role && self.role_admin(node, admin_role).await? != Some(admin_role) {
+            return Some(None);
+        }
+        let Some(mut members) = self.role_members(node, role).await? else {
+            return Some(None);
+        };
+        if admin_role != role {
+            let Some(admins) = self.role_members(node, admin_role).await? else {
+                return Some(None);
+            };
+            for a in admins {
+                if !members.contains(&a) {
+                    members.push(a);
+                }
+            }
+        }
+        Some(Some(members))
+    }
+
+    /// Every holder of `role`, when the contract enumerates them (`AccessControlEnumerable`).
+    /// `Some(None)` when it does not: a plain `AccessControl` keeps no list, and its members
+    /// can only be recovered from its logs.
+    async fn role_members(&self, node: Node, role: B256) -> Option<Option<Vec<Address>>> {
+        let count = calldata("getRoleMemberCount(bytes32)", &[role.0]);
+        let Some(count) = self.call(node, &count).await.settled()? else {
+            return Some(None);
+        };
+        let Some(n) = bounded_count(&count) else {
+            return Some(None);
+        };
+        let mut members = Vec::with_capacity(n);
+        for i in 0..n {
+            let input = calldata(
+                "getRoleMember(bytes32,uint256)",
+                &[role.0, U256::from(i).to_be_bytes()],
+            );
+            let Some(raw) = self.call(node, &input).await.settled()? else {
+                return Some(None);
+            };
+            match word_to_address_strict(&raw) {
+                Some(a) => members.push(a),
+                None => return Some(None),
+            }
+        }
+        Some(Some(members))
     }
 
     /// Whether `implementation` says it is UUPS: `proxiableUUID()` returning the ERC-1967
@@ -351,7 +558,7 @@ impl AuthorityScanner {
             return Some(*known);
         }
         let answer = self
-            .call(Node::base(implementation), selector("proxiableUUID()"))
+            .call(Node::base(implementation), &selector("proxiableUUID()"))
             .await
             .settled()?;
         let is_uups = answer.is_some_and(|b| b.as_ref() == IMPL_SLOT.as_slice());
@@ -410,6 +617,50 @@ mod tests {
         assert_eq!(selector("owner()"), [0x8d, 0xa5, 0xcb, 0x5b]);
         assert_eq!(selector("getMinDelay()"), [0xf2, 0x7a, 0x0c, 0x92]);
         assert_eq!(selector("proxiableUUID()"), [0x52, 0xd1, 0x90, 0x2d]);
+        assert_eq!(selector("entryPoint()"), [0xb0, 0xd6, 0x91, 0xfe]);
+        assert_eq!(selector("nextOwnerIndex()"), [0xd9, 0x48, 0xfd, 0x2e]);
+        assert_eq!(selector("DEFAULT_ADMIN_ROLE()"), [0xa2, 0x17, 0xfd, 0xdf]);
+    }
+
+    /// `type(IAccessControl).interfaceId` is the XOR of the interface's five selectors. A wrong
+    /// constant answers "not AccessControl" for every contract, silently.
+    #[test]
+    fn the_access_control_interface_id_is_derived_from_its_selectors() {
+        let id = [
+            "hasRole(bytes32,address)",
+            "getRoleAdmin(bytes32)",
+            "grantRole(bytes32,address)",
+            "revokeRole(bytes32,address)",
+            "renounceRole(bytes32,address)",
+        ]
+        .iter()
+        .map(|s| selector(s))
+        .fold([0u8; 4], |acc, s| {
+            [acc[0] ^ s[0], acc[1] ^ s[1], acc[2] ^ s[2], acc[3] ^ s[3]]
+        });
+        assert_eq!(id, IACCESS_CONTROL);
+    }
+
+    #[test]
+    fn bytes_return_data_is_bounds_checked() {
+        let mut data = word("20");
+        data.extend(word("20"));
+        data.extend(word("00000000000000000000000000000000000000a1"));
+        assert_eq!(decode_bytes(&data).map(<[u8]>::len), Some(32));
+        let mut short = word("20");
+        short.extend(word("40"));
+        short.extend(word("01"));
+        assert_eq!(decode_bytes(&short), None, "claims 64 bytes, supplies 32");
+        assert_eq!(decode_bytes(&word("ffff")), None, "offset past the end");
+        let mut empty = word("20");
+        empty.extend(word("00"));
+        assert_eq!(decode_bytes(&empty), Some(&[][..]), "a removed owner");
+    }
+
+    #[test]
+    fn a_count_too_large_to_be_a_signer_list_is_refused() {
+        assert_eq!(bounded_count(&word("03")), Some(3));
+        assert_eq!(bounded_count(&word("ffffffff")), None);
     }
 
     fn word(hex_tail: &str) -> Vec<u8> {

@@ -28,6 +28,9 @@ fn kind_name(kind: &str) -> &str {
         "ownable" => "owned contract",
         "l1_alias" => "L2 alias",
         "unknown" => "unrecognized contract",
+        "smart_account" => "smart account",
+        "role_gated" => "AccessControl contract",
+        "sentinel" => "sentinel address",
         other => other,
     }
 }
@@ -41,7 +44,31 @@ fn describe(t: &TreeNode) -> String {
             (Some(m), Some(n)) => format!("Safe {m}-of-{n}"),
             _ => "Safe".into(),
         },
+        "eoa" if t.code.as_deref() == Some("delegated") => "key (EIP-7702 delegated)".into(),
         "eoa" => "key".into(),
+        "smart_account" => match t.passkeys {
+            Some(p) => {
+                let n = t.children.len() + p as usize;
+                let keys = if p > 0 {
+                    format!(", {p} of them passkeys")
+                } else {
+                    String::new()
+                };
+                format!("smart account: any one of {n} signers{keys}")
+            }
+            None => "smart account: signers not read".into(),
+        },
+        "role_gated" => match t.members_listed {
+            Some(true) if t.children.is_empty() => {
+                "AccessControl: no one holds the upgrade role or its admin role".into()
+            }
+            Some(true) => format!(
+                "AccessControl: any one of {} holders of the upgrade role or its admin",
+                t.children.len()
+            ),
+            _ => "AccessControl: role holders not listed on chain".into(),
+        },
+        "sentinel" => "sentinel: no one holds a key for this address".into(),
         "ownable" => "owned contract".into(),
         "timelock" => format!("timelock, delay {}", duration(t.min_delay.unwrap_or(0))),
         "l1_alias" => "L2 alias of an Ethereum contract".into(),
@@ -53,7 +80,8 @@ fn describe(t: &TreeNode) -> String {
 fn relation(r: &str) -> &str {
     match r {
         "uups_self" => "the proxy itself (UUPS)",
-        "safe_owner" => "signer",
+        "safe_owner" | "account_owner" => "signer",
+        "role_member" => "role holder",
         "l1_alias" => "acts for",
         other => other,
     }

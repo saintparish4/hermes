@@ -1,16 +1,16 @@
 {
-  "name": "usd-plus",
-  "target": "0xb79dd08ea68a908a97220c76d19a6aa9cbde4376",
+  "name": "role-admin-holder",
+  "target": "0x66d63089795c6697c805ffa6ade58484a4426af0",
   "blocks": {
-    "base": 51526000,
-    "ethereum": 26013200
+    "base": 52003751,
+    "ethereum": 26092419
   },
-  "recorded_at": 1790798210,
+  "recorded_at": 1790798323,
   "reads": {
     "base": {
       "storage": {
-        "0xb79dd08ea68a908a97220c76d19a6aa9cbde4376": {
-          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x000000000000000000000000e1201f02c02e468c7ff6f61afff505a859673cfd",
+        "0x66d63089795c6697c805ffa6ade58484a4426af0": {
+          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x0000000000000000000000002da3bf4087703bfe4009f49e0b8d5602536f86a1",
           "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3": "0x0000000000000000000000000000000000000000000000000000000000000000",
           "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50": "0x0000000000000000000000000000000000000000000000000000000000000000",
           "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103": "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -18,21 +18,36 @@
         }
       },
       "code": {
-        "0xb79dd08ea68a908a97220c76d19a6aa9cbde4376": {
-          "size": 680,
-          "keccak256": "0x932cddc50793da935ccf915651ad67f6b746e9936fcc5614f0ff492563782c75"
+        "0x5393209fc04e4df32c023d9487fed571dd0b09b2": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        },
+        "0x66d63089795c6697c805ffa6ade58484a4426af0": {
+          "size": 144,
+          "keccak256": "0x3339744be8c4e8875cc97b1c929d87a12b0a8679ce18255dda1819a33a7c28e7"
         }
       },
       "call": {
-        "0xb79dd08ea68a908a97220c76d19a6aa9cbde4376": {
+        "0x2da3bf4087703bfe4009f49e0b8d5602536f86a1": {
+          "0x52d1902d": {
+            "ok": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+          }
+        },
+        "0x66d63089795c6697c805ffa6ade58484a4426af0": {
           "0x01ffc9a77965db0b00000000000000000000000000000000000000000000000000000000": {
             "ok": "0x0000000000000000000000000000000000000000000000000000000000000001"
           },
           "0x248a9ca30000000000000000000000000000000000000000000000000000000000000000": {
             "ok": "0x0000000000000000000000000000000000000000000000000000000000000000"
           },
+          "0x248a9ca3189ab7a9244df0848122154315af71fe140f3db0fe014031783b0946b8c9d2e3": {
+            "ok": "0x0000000000000000000000000000000000000000000000000000000000000000"
+          },
           "0x8da5cb5b": {
             "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0x9010d07c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000": {
+            "ok": "0x0000000000000000000000005393209fc04e4df32c023d9487fed571dd0b09b2"
           },
           "0xa0e67e2b": {
             "revert": "server returned an error response: error code 3: execution reverted"
@@ -44,7 +59,10 @@
             "revert": "server returned an error response: error code 3: execution reverted"
           },
           "0xca15c8730000000000000000000000000000000000000000000000000000000000000000": {
-            "revert": "server returned an error response: error code 3: execution reverted"
+            "ok": "0x0000000000000000000000000000000000000000000000000000000000000001"
+          },
+          "0xca15c873189ab7a9244df0848122154315af71fe140f3db0fe014031783b0946b8c9d2e3": {
+            "ok": "0x0000000000000000000000000000000000000000000000000000000000000000"
           },
           "0xe75235b8": {
             "revert": "server returned an error response: error code 3: execution reverted"
@@ -53,19 +71,19 @@
             "revert": "server returned an error response: error code 3: execution reverted"
           },
           "0xf72c0d8b": {
-            "revert": "server returned an error response: error code 3: execution reverted"
-          }
-        },
-        "0xe1201f02c02e468c7ff6f61afff505a859673cfd": {
-          "0x52d1902d": {
-            "ok": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+            "ok": "0x189ab7a9244df0848122154315af71fe140f3db0fe014031783b0946b8c9d2e3"
           }
         }
       }
     },
     "ethereum": {
       "storage": {},
-      "code": {},
+      "code": {
+        "0x4282209fc04e4df32c023d9487fed571dd0af8a1": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        }
+      },
       "call": {}
     }
   }

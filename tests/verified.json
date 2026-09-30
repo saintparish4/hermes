@@ -199,24 +199,24 @@
     "name": "usd-plus",
     "address": "0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376",
     "label": "USD+",
-    "shape": "UUPS confirmed, access control not recognized: proxiableUUID() says UUPS, owner() is absent",
+    "shape": "UUPS confirmed, gated by OpenZeppelin AccessControl rather than an owner, and the role's holders are not listed on chain",
     "expected": {
       "kind": "uups",
-      "terminal_authority": null,
-      "terminal_chain": null,
-      "authority_kind": null,
+      "terminal_authority": "0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376",
+      "terminal_chain": "base",
+      "authority_kind": "role_gated",
       "compromise_depth": null,
-      "timelock_seconds": null,
-      "confidence": null,
-      "upgrade_path": null,
-      "unresolved_reason": "unrecognized_interface",
-      "depth_unknown_reason": null
+      "timelock_seconds": 0,
+      "confidence": "medium",
+      "upgrade_path": "uups_owner",
+      "unresolved_reason": null,
+      "depth_unknown_reason": "roles_unread"
     },
     "checked": {
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Implementation slot = 0xe120..3cfD, admin and beacon slots zero. The implementation answers proxiableUUID() with the ERC-1967 implementation slot, so upgrades are UUPS and run through the proxy. Through the proxy, owner(), getOwners(), getThreshold() and getMinDelay() all revert: upgrades are gated by something other than an owner, so no root is expected.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot = 0xe120..3cfD, admin and beacon slots zero. The implementation answers proxiableUUID() with the ERC-1967 implementation slot, so upgrades are UUPS and run through the proxy. Through the proxy, owner(), getOwners(), getThreshold() and getMinDelay() all revert: upgrades are gated by something other than an owner, so no root is expected. Re-read 2026-09-30 at the same block: supportsInterface(0x7965db0b) = true and DEFAULT_ADMIN_ROLE() = 0, so it is OpenZeppelin AccessControl; UPGRADER_ROLE() and getRoleMemberCount(0) revert, so upgrades take the admin role and its holders are not enumerable. The root is the contract's own role, keys unknown.",
       "urls": [
         "https://basescan.org/address/0xB79DD08EA68A908A97220C76d19A6aA9cBDE4376#readProxyContract",
         "https://basescan.org/address/0xe1201f02C02e468c7fF6F61AFff505A859673cfD#readContract"
@@ -417,6 +417,200 @@
         "https://basescan.org/address/0x9Caa0e7277ce86A4644F2D10b72561080531b674",
         "https://basescan.org/address/0xe68ED13998fd48497EAA3b52e20823605D8d7706#readContract",
         "https://app.safe.global/settings/setup?safe=base:0x6454cf0127a153295435160768C85225Cd19Bf15"
+      ]
+    }
+  },
+  {
+    "name": "eip7702-self",
+    "address": "0x0F7cDA47d426B4f8DDdD4183829A938CFBDAAB38",
+    "label": "EIP-7702 account",
+    "shape": "An externally owned account that delegated its code (EIP-7702) and so reads as a UUPS proxy: its own key is the authority",
+    "expected": {
+      "kind": "uups",
+      "terminal_authority": "0x0F7cDA47d426B4f8DDdD4183829A938CFBDAAB38",
+      "terminal_chain": "base",
+      "authority_kind": "eoa",
+      "compromise_depth": 1,
+      "timelock_seconds": 0,
+      "confidence": "medium",
+      "upgrade_path": "uups_owner",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 52003751,
+      "ethereum_block": 26092419,
+      "how": "Raw JSON-RPC outside Hermes. getCode = 0xef0100 || 0x7702cb55..176c, a 23-byte EIP-7702 designator, so this is an EOA with delegated code. Implementation slot = 0x0001..9e72 (Coinbase Smart Wallet), admin and beacon zero; the implementation answers proxiableUUID() with the ERC-1967 slot. The account answers entryPoint() and nothing else Hermes probes, but its private key signs for it whatever the delegate allows. One key; Medium because the walk starts at a UUPS proxy.",
+      "urls": [
+        "https://basescan.org/address/0x0F7cDA47d426B4f8DDdD4183829A938CFBDAAB38"
+      ]
+    }
+  },
+  {
+    "name": "eip7702-behind-admin",
+    "address": "0x034651d50c3Caf5cF91d646ad1a8092738cc7718",
+    "label": "ProxyAdmin under an EIP-7702 key",
+    "shape": "A ProxyAdmin whose owner is an EIP-7702 delegated EOA, one of two such keys behind 25 indexed proxies each",
+    "expected": {
+      "kind": "transparent",
+      "terminal_authority": "0x7fa6d7d62392f7464f87518de13920f85b99d27c",
+      "terminal_chain": "base",
+      "authority_kind": "eoa",
+      "compromise_depth": 1,
+      "timelock_seconds": 0,
+      "confidence": "high",
+      "upgrade_path": "admin_slot",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 52003751,
+      "ethereum_block": 26092419,
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x7cfd..3b85, which reverts getOwners/getThreshold/getMinDelay/entryPoint and answers owner() = 0x7fa6..d27c. That address's code is 0xef0100 || 0x63c0..e32b, an EIP-7702 designator: an EOA with delegated code, so one key. Before model 2 it answered entryPoint() and was reported unrecognized.",
+      "urls": [
+        "https://basescan.org/address/0x034651d50c3Caf5cF91d646ad1a8092738cc7718",
+        "https://basescan.org/address/0x7cfd2c84f2313f8cf46f69f0471344d469613b85#readContract",
+        "https://basescan.org/address/0x7fa6d7d62392f7464f87518de13920f85b99d27c"
+      ]
+    }
+  },
+  {
+    "name": "multi-owner-account",
+    "address": "0x38d4479cB3AccFBb54877B4FD3484B5727cB6bd7",
+    "label": "UUPS proxy owned by a smart account",
+    "shape": "A UUPS proxy whose owner() is a MultiOwnable smart account (Coinbase Smart Wallet): any one of its signers upgrades it",
+    "expected": {
+      "kind": "uups",
+      "terminal_authority": "0x2e93ebc3f93df6b4170d41d8cc700921cc2de9aa",
+      "terminal_chain": "base",
+      "authority_kind": "smart_account",
+      "compromise_depth": 1,
+      "timelock_seconds": 0,
+      "confidence": "medium",
+      "upgrade_path": "uups_owner",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 52003751,
+      "ethereum_block": 26092419,
+      "how": "Raw JSON-RPC outside Hermes. Implementation 0x6c85..d1e7 answers proxiableUUID() with the ERC-1967 slot; the proxy answers owner() = 0x2e93..e9aa. That account has 61 bytes of code, answers entryPoint() = 0x5FF1..2789 (EntryPoint v0.6) and nextOwnerIndex() = 2; ownerAtIndex(0) and (1) are 32-byte addresses 0x39a0..2bfa and 0xe6e9..8397, both without code on Base or at their unaliased address on Ethereum. MultiOwnable accepts any one owner, so one key; Medium for both the UUPS start and the account.",
+      "urls": [
+        "https://basescan.org/address/0x38d4479cB3AccFBb54877B4FD3484B5727cB6bd7",
+        "https://basescan.org/address/0x2e93ebc3f93df6b4170d41d8cc700921cc2de9aa",
+        "https://github.com/coinbase/smart-wallet/blob/main/src/MultiOwnable.sol"
+      ]
+    }
+  },
+  {
+    "name": "unread-account",
+    "address": "0x136607334625f802AC2Ed58d3e3F87682a21B619",
+    "label": "Smart account, scheme unread",
+    "shape": "A UUPS proxy that is itself an ERC-4337 account of a scheme Hermes does not read: a real root with no key count",
+    "expected": {
+      "kind": "uups",
+      "terminal_authority": "0x136607334625f802AC2Ed58d3e3F87682a21B619",
+      "terminal_chain": "base",
+      "authority_kind": "smart_account",
+      "compromise_depth": null,
+      "timelock_seconds": 0,
+      "confidence": "medium",
+      "upgrade_path": "uups_owner",
+      "unresolved_reason": null,
+      "depth_unknown_reason": "account_keys_unread"
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 52003751,
+      "ethereum_block": 26092419,
+      "how": "Raw JSON-RPC outside Hermes. Implementation 0x0000..b25a answers proxiableUUID() with the ERC-1967 slot. The proxy reverts owner/getOwners/getThreshold/getMinDelay, answers entryPoint() = 0x0000..a032 (EntryPoint v0.7) and reverts nextOwnerIndex(): an account whose signers are not listed in a way Hermes reads.",
+      "urls": [
+        "https://basescan.org/address/0x136607334625f802AC2Ed58d3e3F87682a21B619"
+      ]
+    }
+  },
+  {
+    "name": "role-admin-holder",
+    "address": "0x66d63089795C6697c805ffa6ade58484A4426Af0",
+    "label": "AccessControl, upgrade role empty",
+    "shape": "An AccessControlEnumerable contract whose UPGRADER_ROLE has no holder, but whose admin role does: that holder can grant itself the upgrade",
+    "expected": {
+      "kind": "uups",
+      "terminal_authority": "0x66d63089795C6697c805ffa6ade58484A4426Af0",
+      "terminal_chain": "base",
+      "authority_kind": "role_gated",
+      "compromise_depth": 1,
+      "timelock_seconds": 0,
+      "confidence": "medium",
+      "upgrade_path": "uups_owner",
+      "unresolved_reason": null,
+      "depth_unknown_reason": null
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 52003751,
+      "ethereum_block": 26092419,
+      "how": "Raw JSON-RPC outside Hermes. Implementation 0x2da3..86a1 answers proxiableUUID() with the ERC-1967 slot. The proxy reverts owner/getOwners/getThreshold/getMinDelay/entryPoint; supportsInterface(0x7965db0b) = true, DEFAULT_ADMIN_ROLE() = 0, UPGRADER_ROLE() = 0x189a..d2e3 with getRoleMemberCount = 0. getRoleAdmin(UPGRADER_ROLE) = 0, getRoleAdmin(0) = 0, and role 0 has one member, 0x5393..09b2, with no code on Base or at its unaliased address on Ethereum. That key can grant itself UPGRADER_ROLE: one key.",
+      "urls": [
+        "https://basescan.org/address/0x66d63089795C6697c805ffa6ade58484A4426Af0#readProxyContract"
+      ]
+    }
+  },
+  {
+    "name": "renounced-to-sentinel",
+    "address": "0xF1CC2116366131409f04eB25d8619Eca73171D41",
+    "label": "UUPS proxy, owner renounced",
+    "shape": "A UUPS proxy whose owner() is 0xff..ff: a root no one holds a key for, not one key",
+    "expected": {
+      "kind": "uups",
+      "terminal_authority": "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF",
+      "terminal_chain": "base",
+      "authority_kind": "sentinel",
+      "compromise_depth": null,
+      "timelock_seconds": 0,
+      "confidence": "medium",
+      "upgrade_path": "uups_owner",
+      "unresolved_reason": null,
+      "depth_unknown_reason": "no_known_key"
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 52003751,
+      "ethereum_block": 26092419,
+      "how": "Raw JSON-RPC outside Hermes. Implementation 0x0c70..8412 answers proxiableUUID() with the ERC-1967 slot. The proxy answers owner() = 0xff..ff (and also entryPoint(), which the walk never reaches because owner() answered first). No one can hold the key to 0xff..ff; before model 2 this ranked as a one-key EOA.",
+      "urls": [
+        "https://basescan.org/address/0xF1CC2116366131409f04eB25d8619Eca73171D41#readProxyContract"
+      ]
+    }
+  },
+  {
+    "name": "timelock-72h",
+    "address": "0x291088312150482826b3A37d5A69a4c54DAa9118",
+    "label": "ProxyAdmin under a 72h timelock",
+    "shape": "A ProxyAdmin owned by a TimelockController: the delay is read, the proposer and executor roles are not listed on chain",
+    "expected": {
+      "kind": "transparent",
+      "terminal_authority": "0xf425ed48483B49cF10C8a7f6cFd25dFD86d3155a",
+      "terminal_chain": "base",
+      "authority_kind": "timelock",
+      "compromise_depth": null,
+      "timelock_seconds": 259200,
+      "confidence": "medium",
+      "upgrade_path": "admin_slot",
+      "unresolved_reason": null,
+      "depth_unknown_reason": "roles_unread"
+    },
+    "checked": {
+      "on": "2026-09-30",
+      "base_block": 52003751,
+      "ethereum_block": 26092419,
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0xdf3f..78d0, which answers owner() = 0xf425..155a. That contract answers getMinDelay() = 0x3f480 = 259,200 s (72h), reverts owner/getOwners/getThreshold, answers supportsInterface(0x7965db0b) = true and reverts getRoleMemberCount(PROPOSER_ROLE): OpenZeppelin TimelockController, roles not enumerable.",
+      "urls": [
+        "https://basescan.org/address/0x291088312150482826b3A37d5A69a4c54DAa9118",
+        "https://basescan.org/address/0xf425ed48483B49cF10C8a7f6cFd25dFD86d3155a#readContract"
       ]
     }
   }

@@ -1,0 +1,60 @@
+{
+  "name": "unread-account",
+  "target": "0x136607334625f802ac2ed58d3e3f87682a21b619",
+  "blocks": {
+    "base": 52003751,
+    "ethereum": 26092419
+  },
+  "recorded_at": 1790798292,
+  "reads": {
+    "base": {
+      "storage": {
+        "0x136607334625f802ac2ed58d3e3f87682a21b619": {
+          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x0000000000000000000000000000000000006e2f9d80caec0da6500f005eb25a",
+          "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "code": {
+        "0x136607334625f802ac2ed58d3e3f87682a21b619": {
+          "size": 845,
+          "keccak256": "0x0acbd632c56f6f227951f6c832b36177319145deddb8df3a12c3bcc91fbf49b3"
+        }
+      },
+      "call": {
+        "0x0000000000006e2f9d80caec0da6500f005eb25a": {
+          "0x52d1902d": {
+            "ok": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+          }
+        },
+        "0x136607334625f802ac2ed58d3e3f87682a21b619": {
+          "0x8da5cb5b": {
+            "revert": "server returned an error response: error code 3: execution reverted, data: \"0xfcfc5aad8da5cb5b00000000000000000000000000000000000000000000000000000000\""
+          },
+          "0xa0e67e2b": {
+            "revert": "server returned an error response: error code 3: execution reverted, data: \"0xfcfc5aada0e67e2b00000000000000000000000000000000000000000000000000000000\""
+          },
+          "0xb0d691fe": {
+            "ok": "0x0000000000000000000000000000000071727de22e5e9d8baf0edac6f37da032"
+          },
+          "0xd948fd2e": {
+            "revert": "server returned an error response: error code 3: execution reverted, data: \"0xfcfc5aadd948fd2e00000000000000000000000000000000000000000000000000000000\""
+          },
+          "0xe75235b8": {
+            "revert": "server returned an error response: error code 3: execution reverted, data: \"0xfcfc5aade75235b800000000000000000000000000000000000000000000000000000000\""
+          },
+          "0xf27a0c92": {
+            "revert": "server returned an error response: error code 3: execution reverted, data: \"0xfcfc5aadf27a0c9200000000000000000000000000000000000000000000000000000000\""
+          }
+        }
+      }
+    },
+    "ethereum": {
+      "storage": {},
+      "code": {},
+      "call": {}
+    }
+  }
+}

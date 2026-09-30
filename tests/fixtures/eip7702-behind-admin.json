@@ -1,0 +1,58 @@
+{
+  "name": "eip7702-behind-admin",
+  "target": "0x034651d50c3caf5cf91d646ad1a8092738cc7718",
+  "blocks": {
+    "base": 52003751,
+    "ethereum": 26092419
+  },
+  "recorded_at": 1790798252,
+  "reads": {
+    "base": {
+      "storage": {
+        "0x034651d50c3caf5cf91d646ad1a8092738cc7718": {
+          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x0000000000000000000000007fcab141f191cd8173bdb4a6fbbaa8f75e94bf8d",
+          "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103": "0x0000000000000000000000007cfd2c84f2313f8cf46f69f0471344d469613b85",
+          "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "code": {
+        "0x034651d50c3caf5cf91d646ad1a8092738cc7718": {
+          "size": 1167,
+          "keccak256": "0xac7b86f826bf440d389f1c1c5e038cdda3c1e20f1f43593b5067168da0fcf421"
+        },
+        "0x7cfd2c84f2313f8cf46f69f0471344d469613b85": {
+          "size": 1071,
+          "keccak256": "0xef59f2d3e8dcc41ead25439da61240a782788788c5d76b5cd8093a094775af96"
+        },
+        "0x7fa6d7d62392f7464f87518de13920f85b99d27c": {
+          "size": 23,
+          "keccak256": "0xb09ef517c48d2bf6eed05457ff56871b2596e3fc904fc6e9795882a870c2e993",
+          "delegation": "0x63c0c19a282a1b52b07dd5a65b58948a07dae32b"
+        }
+      },
+      "call": {
+        "0x7cfd2c84f2313f8cf46f69f0471344d469613b85": {
+          "0x8da5cb5b": {
+            "ok": "0x0000000000000000000000007fa6d7d62392f7464f87518de13920f85b99d27c"
+          },
+          "0xa0e67e2b": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xe75235b8": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xf27a0c92": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          }
+        }
+      }
+    },
+    "ethereum": {
+      "storage": {},
+      "code": {},
+      "call": {}
+    }
+  }
+}

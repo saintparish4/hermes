@@ -13,6 +13,7 @@ use crate::authority::{
 };
 use crate::chain::{Chain, Node};
 use crate::store::ProxyRecord;
+use alloy::primitives::Address;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
@@ -45,9 +46,32 @@ fn falls_at(
     }
     let answer = probes
         .get(&node)
-        .and_then(|probe| match authority_kind(probe) {
-            AuthorityKind::Eoa => Some(false),
-            AuthorityKind::Safe => safe_falls(node, probe, compromised, probes, depth, seen),
+        .and_then(|probe| match authority_kind(node, probe) {
+            AuthorityKind::Eoa | AuthorityKind::Sentinel => Some(false),
+            AuthorityKind::Safe => {
+                let threshold = probe.threshold? as usize;
+                let owners = probe.owners.as_ref()?;
+                enough_fall(node, owners, 0, threshold, compromised, probes, depth, seen)
+            }
+            AuthorityKind::SmartAccount => {
+                let signers = probe.account_owners.as_ref()?;
+                let (addresses, passkeys) = (&signers.addresses, signers.passkeys);
+                enough_fall(
+                    node,
+                    addresses,
+                    passkeys,
+                    1,
+                    compromised,
+                    probes,
+                    depth,
+                    seen,
+                )
+            }
+            AuthorityKind::RoleGated => match probe.roles.as_ref()?.members.as_ref()? {
+                // A role no one holds, under an admin role no one holds, falls to no key.
+                members if members.is_empty() => Some(false),
+                members => enough_fall(node, members, 0, 1, compromised, probes, depth, seen),
+            },
             AuthorityKind::Ownable | AuthorityKind::Timelock | AuthorityKind::L1Alias => falls_at(
                 successor(node, probe)?,
                 compromised,
@@ -61,26 +85,29 @@ fn falls_at(
     answer
 }
 
-fn safe_falls(
+/// Whether at least `threshold` of these signers fall. Passkey signers have no address to
+/// compromise, so they never fall here; they only count toward the size of the set.
+#[allow(clippy::too_many_arguments)]
+fn enough_fall(
     node: Node,
-    probe: &AuthorityProbe,
+    members: &[Address],
+    passkeys: u32,
+    threshold: usize,
     compromised: &HashSet<Node>,
     probes: &HashMap<Node, AuthorityProbe>,
     depth: usize,
     seen: &mut HashSet<Node>,
 ) -> Option<bool> {
-    let owners = probe.owners.as_ref()?;
-    let threshold = probe.threshold? as usize;
-    if threshold == 0 || threshold > owners.len() {
+    if threshold == 0 || threshold > members.len() + passkeys as usize {
         return None;
     }
     let (mut taken, mut unknown) = (0usize, 0usize);
-    for &address in owners {
-        let owner = Node {
+    for &address in members {
+        let member = Node {
             chain: node.chain,
             address,
         };
-        match falls_at(owner, compromised, probes, depth + 1, seen) {
+        match falls_at(member, compromised, probes, depth + 1, seen) {
             Some(true) => taken += 1,
             Some(false) => {}
             None => unknown += 1,
@@ -432,6 +459,46 @@ mod tests {
         let radius = blast_radius(Node::base(C), &entries, &g);
         assert!(radius.controls.is_empty() && radius.participates.is_empty());
         assert!(radius.undetermined.is_empty());
+    }
+
+    /// A passkey signer has no address to take, so it never falls; it still counts toward the
+    /// signer set, which is what keeps a one-of-two account from reading as taken.
+    #[test]
+    fn a_passkey_signer_is_never_taken_and_an_address_signer_is_enough() {
+        let account = AuthorityProbe {
+            entry_point: Some(E),
+            account_owners: Some(crate::authority::AccountOwners {
+                addresses: vec![B],
+                passkeys: 1,
+            }),
+            ..Default::default()
+        };
+        let g = graph(&[(A, account), (B, key())]);
+        assert_eq!(falls(Node::base(A), &base(&[B]), &g), Some(true));
+        assert_eq!(falls(Node::base(A), &base(&[C]), &g), Some(false));
+    }
+
+    #[test]
+    fn a_role_no_one_holds_falls_to_no_key() {
+        let renounced = AuthorityProbe {
+            roles: Some(crate::authority::RoleGate {
+                role: alloy::primitives::B256::ZERO,
+                admin_role: alloy::primitives::B256::ZERO,
+                members: Some(vec![]),
+            }),
+            ..Default::default()
+        };
+        let g = graph(&[(A, renounced)]);
+        assert_eq!(falls(Node::base(A), &base(&[B]), &g), Some(false));
+        let unlisted = AuthorityProbe {
+            roles: Some(crate::authority::RoleGate::default()),
+            ..Default::default()
+        };
+        assert_eq!(
+            falls(Node::base(A), &base(&[B]), &graph(&[(A, unlisted)])),
+            None,
+            "holders not listed is not holders absent"
+        );
     }
 
     #[test]

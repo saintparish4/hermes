@@ -1,0 +1,63 @@
+{
+  "name": "renounced-to-sentinel",
+  "target": "0xf1cc2116366131409f04eb25d8619eca73171d41",
+  "blocks": {
+    "base": 52003751,
+    "ethereum": 26092419
+  },
+  "recorded_at": 1790798333,
+  "reads": {
+    "base": {
+      "storage": {
+        "0xf1cc2116366131409f04eb25d8619eca73171d41": {
+          "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc": "0x0000000000000000000000000c703e87bc10ad8eaab5ef211651e87d2aab8412",
+          "0x7050c9e0f4ca769c69bd3a8ef740bc37934f8e2c036e5a723fd8ee048ed3f8c3": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "0xc5f16f0fcc639fa48a6947836d9850f504798523bf8c9a3a87d5876cf622bcf7": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      },
+      "code": {
+        "0xf1cc2116366131409f04eb25d8619eca73171d41": {
+          "size": 209,
+          "keccak256": "0xa2fe9bf9b8c00ce24954a1659cf7b570c975847718a005632af648d4619abd62"
+        },
+        "0xffffffffffffffffffffffffffffffffffffffff": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        }
+      },
+      "call": {
+        "0x0c703e87bc10ad8eaab5ef211651e87d2aab8412": {
+          "0x52d1902d": {
+            "ok": "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
+          }
+        },
+        "0xf1cc2116366131409f04eb25d8619eca73171d41": {
+          "0x8da5cb5b": {
+            "ok": "0x000000000000000000000000ffffffffffffffffffffffffffffffffffffffff"
+          },
+          "0xa0e67e2b": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xe75235b8": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xf27a0c92": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          }
+        }
+      }
+    },
+    "ethereum": {
+      "storage": {},
+      "code": {
+        "0xeeeeffffffffffffffffffffffffffffffffeeee": {
+          "size": 0,
+          "keccak256": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        }
+      },
+      "call": {}
+    }
+  }
+}

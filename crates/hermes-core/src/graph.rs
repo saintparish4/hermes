@@ -28,7 +28,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 /// 1. The graph is kept (2026-09-30). Resolution as of the chain-wide index of 2026-09-20.
 /// 2. EIP-7702 delegated accounts read as keys; ERC-4337 accounts, `AccessControl` contracts
 ///    and sentinel addresses recognized; timelock roots say their roles are unread.
-pub const MODEL_VERSION: i64 = 2;
+/// 3. A key that signs under two branches is counted once: the fewest distinct keys, searched
+///    for when summing per branch would overstate it (`shared_signers` when it cannot be).
+pub const MODEL_VERSION: i64 = 3;
 
 /// How one address stands to another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]

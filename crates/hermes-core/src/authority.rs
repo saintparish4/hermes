@@ -237,6 +237,10 @@ pub enum DepthGap {
     AccountKeysUnread,
     /// The root is an address no one holds a key for.
     NoKnownKey,
+    /// Some key signs in more than one place under the root, and the search for the fewest
+    /// distinct keys was too large to run (or ran into a passkey, which has no identity to
+    /// share). Summing per branch would overstate the count, so there is none.
+    SharedSigners,
 }
 
 impl DepthGap {
@@ -248,6 +252,7 @@ impl DepthGap {
             Self::RolesUnread => "roles_unread",
             Self::AccountKeysUnread => "account_keys_unread",
             Self::NoKnownKey => "no_known_key",
+            Self::SharedSigners => "shared_signers",
         }
     }
 }
@@ -531,6 +536,128 @@ fn cheapest(
     )
 }
 
+/// Every key a count under `node` reads, with repeats: a key that signs under two branches is
+/// listed twice. `passkeys` counts signers that have no address. `None` wherever the count is.
+fn signer_keys(
+    node: Node,
+    probes: &HashMap<Node, AuthorityProbe>,
+    depth: usize,
+    seen: &mut HashSet<Node>,
+    out: &mut (Vec<Node>, u32),
+) -> Option<()> {
+    if depth > MAX_DEPTH || !seen.insert(node) {
+        return None;
+    }
+    let probe = probes.get(&node)?;
+    let under = |a: &Address| Node {
+        chain: node.chain,
+        address: *a,
+    };
+    let members: Vec<Node> = match classify(node, probe).0 {
+        AuthorityKind::Eoa => {
+            out.0.push(node);
+            Vec::new()
+        }
+        AuthorityKind::Safe => probe.owners.as_ref()?.iter().map(under).collect(),
+        AuthorityKind::SmartAccount => {
+            let signers = probe.account_owners.as_ref()?;
+            out.1 += signers.passkeys;
+            signers.addresses.iter().map(under).collect()
+        }
+        AuthorityKind::RoleGated => probe
+            .roles
+            .as_ref()?
+            .members
+            .as_ref()?
+            .iter()
+            .map(under)
+            .collect(),
+        AuthorityKind::Ownable | AuthorityKind::Timelock | AuthorityKind::L1Alias => {
+            vec![successor(node, probe)?]
+        }
+        AuthorityKind::Sentinel | AuthorityKind::Unknown => return None,
+    };
+    for m in members {
+        signer_keys(m, probes, depth + 1, seen, out)?;
+    }
+    seen.remove(&node);
+    Some(())
+}
+
+/// The most key sets the shared-signer search will try before giving up. Real authority trees
+/// are small: the predeploys' has 17 keys and needs no search at all.
+const SHARED_SIGNER_SEARCH: u64 = 200_000;
+
+fn choose(n: u64, k: u64) -> u64 {
+    (0..k).fold(1u64, |acc, i| acc.saturating_mul(n - i) / (i + 1))
+}
+
+/// The fewest distinct keys that take the authority at `root`, given that summing each
+/// branch's cheapest keys gave `summed`.
+///
+/// Summing is exact when no key appears twice. When one does, it counts that key once per
+/// branch: a 2-of-2 over two 2-of-3 Safes sharing two signers falls to those two keys, and the
+/// sum says four. That is an overstatement, the direction that reads as a safety margin, so
+/// with a shared key the answer is searched for, smallest sets first, and is `Err` when the
+/// search is too large to run or a passkey (which has no identity to share) is involved.
+fn fewest_distinct_keys(
+    root: Node,
+    summed: u32,
+    probes: &HashMap<Node, AuthorityProbe>,
+) -> Result<u32, DepthGap> {
+    let mut found = (Vec::new(), 0);
+    if signer_keys(root, probes, 0, &mut HashSet::new(), &mut found).is_none() {
+        return Ok(summed);
+    }
+    let (keys, passkeys) = found;
+    let mut distinct = keys.clone();
+    distinct.sort();
+    distinct.dedup();
+    if distinct.len() == keys.len() {
+        return Ok(summed);
+    }
+    if passkeys > 0 {
+        return Err(DepthGap::SharedSigners);
+    }
+    let n = distinct.len() as u64;
+    let work: u64 = (1..u64::from(summed))
+        .map(|k| choose(n, k.min(n)))
+        .fold(0u64, u64::saturating_add);
+    if work > SHARED_SIGNER_SEARCH {
+        return Err(DepthGap::SharedSigners);
+    }
+    for size in 1..(summed as usize).min(distinct.len() + 1) {
+        let mut pick: Vec<usize> = (0..size).collect();
+        loop {
+            let set: HashSet<Node> = pick.iter().map(|&i| distinct[i]).collect();
+            match crate::blast::falls(root, &set, probes) {
+                Some(true) => return Ok(size as u32),
+                Some(false) => {}
+                None => return Err(DepthGap::SharedSigners),
+            }
+            if !next_combination(&mut pick, distinct.len()) {
+                break;
+            }
+        }
+    }
+    Ok(summed)
+}
+
+/// Advance `pick` to the next k-combination of `0..n` in lexicographic order.
+fn next_combination(pick: &mut [usize], n: usize) -> bool {
+    let k = pick.len();
+    for i in (0..k).rev() {
+        if pick[i] < n - k + i {
+            pick[i] += 1;
+            for j in i + 1..k {
+                pick[j] = pick[j - 1] + 1;
+            }
+            return true;
+        }
+    }
+    false
+}
+
 /// Why the root's own keys cannot be counted, when the root's kind is the reason.
 fn root_gap(root: Node, probe: Option<&AuthorityProbe>) -> Option<DepthGap> {
     let probe = probe?;
@@ -559,11 +686,15 @@ pub fn resolve(admin: Node, probes: &HashMap<Node, AuthorityProbe>) -> Resolutio
 
     // A truncated, cyclic or unrecognized chain has no trustworthy key count, and a number
     // here would read as a safety margin rather than as the guess it would be.
-    let compromise_depth = if stop.truncated || stop.cycle || stop.confidence == Confidence::Unknown
-    {
+    let summed = if stop.truncated || stop.cycle || stop.confidence == Confidence::Unknown {
         None
     } else {
         keys_required(admin, probes, 0, &mut HashSet::new())
+    };
+    let (compromise_depth, shared) = match summed.map(|k| fewest_distinct_keys(admin, k, probes)) {
+        Some(Ok(k)) => (Some(k), None),
+        Some(Err(gap)) => (None, Some(gap)),
+        None => (None, None),
     };
 
     Resolution {
@@ -576,7 +707,7 @@ pub fn resolve(admin: Node, probes: &HashMap<Node, AuthorityProbe>) -> Resolutio
         truncated: stop.truncated,
         cycle: stop.cycle,
         unanswered: stop.unanswered,
-        root_gap: root_gap(terminal, probes.get(&terminal)),
+        root_gap: shared.or_else(|| root_gap(terminal, probes.get(&terminal))),
     }
 }
 
@@ -1229,6 +1360,133 @@ mod tests {
         let r = resolve_base(A, &graph(&[(A, both), (B, eoa()), (C, eoa())]));
         assert_eq!(r.terminal, Node::base(B));
         assert_eq!(r.kind, AuthorityKind::Eoa);
+    }
+
+    /// Two Safes that share two signers under a 2-of-2: those two keys take all of it. Summing
+    /// each branch counts them twice and says four, a safety margin that does not exist.
+    #[test]
+    fn a_signer_shared_between_branches_is_counted_once() {
+        let (k1, k2, k3, k4) = (
+            Address::with_last_byte(0x31),
+            Address::with_last_byte(0x32),
+            Address::with_last_byte(0x33),
+            Address::with_last_byte(0x34),
+        );
+        let g = graph(&[
+            (A, safe(2, &[B, C])),
+            (B, safe(2, &[k1, k2, k3])),
+            (C, safe(2, &[k1, k2, k4])),
+            (k1, eoa()),
+            (k2, eoa()),
+            (k3, eoa()),
+            (k4, eoa()),
+        ]);
+        let r = resolve_base(A, &g);
+        assert_eq!(
+            r.compromise_depth,
+            Some(2),
+            "k1 and k2 sign in both branches"
+        );
+        assert_eq!(r.depth_gap(), None);
+    }
+
+    #[test]
+    fn a_partly_shared_signer_saves_exactly_the_keys_it_shares() {
+        let (k1, k2, k3, k4, k5) = (
+            Address::with_last_byte(0x31),
+            Address::with_last_byte(0x32),
+            Address::with_last_byte(0x33),
+            Address::with_last_byte(0x34),
+            Address::with_last_byte(0x35),
+        );
+        // Each branch needs two keys and only k1 is in both: k1 plus one more from each, 3 not 4.
+        let g = graph(&[
+            (A, safe(2, &[B, C])),
+            (B, safe(2, &[k1, k2, k3])),
+            (C, safe(2, &[k1, k4, k5])),
+            (k1, eoa()),
+            (k2, eoa()),
+            (k3, eoa()),
+            (k4, eoa()),
+            (k5, eoa()),
+        ]);
+        assert_eq!(resolve_base(A, &g).compromise_depth, Some(3));
+    }
+
+    #[test]
+    fn a_shared_signer_beside_a_passkey_has_no_count() {
+        let k = Address::with_last_byte(0x31);
+        let g = graph(&[
+            (A, safe(2, &[B, C])),
+            (B, account(&[k], 1)),
+            (C, safe(1, &[k])),
+            (k, eoa()),
+        ]);
+        let r = resolve_base(A, &g);
+        assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.depth_gap(), Some(DepthGap::SharedSigners));
+    }
+
+    /// Past the search budget the honest answer is unknown, not the overstated sum.
+    #[test]
+    fn a_shared_signer_search_too_large_to_run_has_no_count() {
+        let keys: Vec<Address> = (0x40..0x70).map(Address::with_last_byte).collect();
+        let mut entries = vec![
+            (A, safe(2, &[B, C])),
+            (B, safe(24, &keys[..24])),
+            (C, safe(24, &keys[1..25])),
+        ];
+        entries.extend(keys.iter().map(|k| (*k, eoa())));
+        let r = resolve_base(A, &graph(&entries));
+        assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.depth_gap(), Some(DepthGap::SharedSigners));
+    }
+
+    /// The key count and `falls` are two walks over the same graph. On random trees with and
+    /// without shared signers, the count must be exactly the smallest set of keys that makes
+    /// the root fall, found here by brute force over every subset.
+    #[test]
+    fn the_key_count_is_the_smallest_set_of_keys_that_takes_the_root() {
+        let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+        let mut next = |bound: u64| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state % bound
+        };
+        let keys: Vec<Address> = (0x80..0x88).map(Address::with_last_byte).collect();
+        for _ in 0..300 {
+            let mut g: HashMap<Node, AuthorityProbe> =
+                keys.iter().map(|k| (Node::base(*k), eoa())).collect();
+            let inner: Vec<Address> = (0..2)
+                .map(|i| {
+                    let safe_addr = Address::with_last_byte(0xc0 + i);
+                    let n = 2 + next(3) as usize;
+                    let mut owners: Vec<Address> = (0..n)
+                        .map(|_| keys[next(keys.len() as u64) as usize])
+                        .collect();
+                    owners.sort();
+                    owners.dedup();
+                    let m = 1 + next(owners.len() as u64) as u32;
+                    g.insert(Node::base(safe_addr), safe(m, &owners));
+                    safe_addr
+                })
+                .collect();
+            let root_threshold = 1 + next(2) as u32;
+            g.insert(Node::base(A), safe(root_threshold, &inner));
+            let counted = resolve(Node::base(A), &g).compromise_depth;
+            let brute = (0u32..1 << keys.len())
+                .filter(|mask| {
+                    let set: HashSet<Node> = (0..keys.len())
+                        .filter(|i| mask & (1 << i) != 0)
+                        .map(|i| Node::base(keys[i]))
+                        .collect();
+                    crate::blast::falls(Node::base(A), &set, &g) == Some(true)
+                })
+                .map(u32::count_ones)
+                .min();
+            assert_eq!(counted, brute, "{g:?}");
+        }
     }
 
     /// Running out of depth on the alias itself leaves the alias as the answer, and says so.

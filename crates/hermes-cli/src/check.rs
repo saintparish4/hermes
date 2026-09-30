@@ -245,8 +245,16 @@ mod tests {
         let docs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/check");
         let policy = read_policy(&docs.join("policy.toml")).unwrap();
         assert_eq!(policy.minimum_keys_required, Some(3));
-        assert!(!policy.allow_unknown, "the example must show the fail-closed default");
-        assert_eq!(read_deployments(&docs.join("deployments.json")).unwrap().len(), 3);
+        assert!(
+            !policy.allow_unknown,
+            "the example must show the fail-closed default"
+        );
+        assert_eq!(
+            read_deployments(&docs.join("deployments.json"))
+                .unwrap()
+                .len(),
+            3
+        );
     }
 
     /// A contract the database does not hold fails, rather than passing for want of evidence.

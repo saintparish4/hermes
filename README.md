@@ -189,7 +189,8 @@ times. `/coverage` reports the cap and how many proxies and families discovery h
 Walks stop at four links and on cycles. `null` is never zero: a covered proxy with no root says
 why (`unrecognized_interface`, `uups_unconfirmed`, `no_upgrade_path`, `rpc_undetermined`), and so
 does a root with no key count (`truncated`, `cycle`, `owners_unknown`, `roles_unread`,
-`account_keys_unread`, `no_known_key`). A node that will not answer is "undetermined", a third
+`account_keys_unread`, `no_known_key`, `shared_signers`). A key that signs in two places under
+one root is counted once; the fewest distinct keys are searched for rather than summed. A node that will not answer is "undetermined", a third
 outcome that never becomes "no". Confidence only falls along a walk.
 
 ### The graph and its history
@@ -253,7 +254,7 @@ Stack: Rust with `alloy`, `tokio`, `axum` and `sqlx` on SQLite, one binary, no e
 
 ## Testing
 
-`cargo test --workspace` runs 239 tests, all offline: pure functions, `sqlite::memory:`, temp
+`cargo test --workspace` runs 246 tests, all offline: pure functions, `sqlite::memory:`, temp
 files, or recorded chain answers replayed from `tests/fixtures/`. CI runs `cargo fmt --check`,
 `cargo clippy --workspace --all-targets -- -D warnings` (with the nursery `cognitive_complexity`
 lint denied), the tests, and a locked build, on Ubuntu and macOS.
@@ -274,7 +275,8 @@ lint denied), the tests, and a locked build, on Ubuntu and macOS.
 - **The resolver and blast radius.** Cheapest-m-of-n arithmetic, cycles, the depth cap,
   confidence that only falls, lying thresholds, aliasing to the depth cap, and `falls`, the dual
   of the key count: eleven keys in the right places take the predeploys, eleven in the wrong
-  places do not.
+  places do not. On 300 random graphs with shared signers, the key count equals the smallest
+  key set a brute-force search finds that takes the root.
 - **The RPC boundary.** Undetermined never becomes "no", empty reads are confirmed, replay is
   keyed rather than ordered, and a read a fixture never saw fails loudly.
 - **Policy.** Each rule passing and failing, unknown failing closed, and a misspelled rule refused.

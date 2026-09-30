@@ -66,14 +66,17 @@ slot are recorded and <em>not</em> counted as covered.</p>
 <tr><td>none of the above</td><td>unrecognized</td><td>no root is published</td></tr>
 </table>
 <p>The walk follows at most four links and stops on a cycle. An unknown owner anywhere under a
-Safe makes the whole count unknown, because the unknown one could be a single key.</p>
+Safe makes the whole count unknown, because the unknown one could be a single key. A key that
+signs in two places under one root is counted once: summing each branch's cheapest keys would
+count it twice and overstate the margin, so the fewest distinct keys are searched for instead,
+and the count is unknown (<code>shared_signers</code>) when that search is too large.</p>
 
 <h2>Unknown is an answer</h2>
 <p>A missing number is <code>null</code>, never zero. A covered proxy with no root says why:
 <code>unrecognized_interface</code>, <code>uups_unconfirmed</code>, <code>no_upgrade_path</code>
 or <code>rpc_undetermined</code>. A root with no key count says why too: <code>truncated</code>,
 <code>cycle</code>, <code>owners_unknown</code>, <code>roles_unread</code>,
-<code>account_keys_unread</code> or <code>no_known_key</code>. A call the node would not answer
+<code>account_keys_unread</code>, <code>no_known_key</code> or <code>shared_signers</code>. A call the node would not answer
 is a third outcome, distinct from a contract answering "no", and never becomes a verdict.
 Confidence only falls along a walk.</p>
 

@@ -34,8 +34,10 @@ a finding about any contract.
 - **Smart accounts.** ERC-4337 accounts are recognized by `entryPoint()`. Only MultiOwnable
   accounts (Coinbase Smart Wallet) have their signers read. Others are roots with
   `account_keys_unread`. A passkey signer counts as one key with no address.
-- **Keys are counted, not people.** Two keys held by one person count as two. Nested Safes that
-  share signers count each signer once per Safe.
+- **Keys are counted, not people.** Two keys held by one person count as two. A key that signs
+  in several places under one root is counted once: when it does, the fewest distinct keys are
+  searched for, and when that search would be too large the count is unknown
+  (`shared_signers`) rather than an overstatement.
 - **An unknown owner poisons a Safe's count**, even when the known owners alone would meet the
   threshold with single keys. This is deliberately conservative.
 - **Depth is capped at four links.** A deeper chain is reported as truncated, with no key count.

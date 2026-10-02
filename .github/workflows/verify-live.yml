@@ -1,11 +1,16 @@
 name: Live re-check
 
-# Runs the hand-verified table (tests/verified.json) against the live chain. This job is allowed
-# to fail, and it is kept apart from CI on purpose: CI replays pinned fixtures, so red there
-# means Hermes regressed. Red here means Hermes regressed *or the chain moved* (an admin was
-# transferred, a threshold changed). Collapsing the two into one red X is how a suite gets
-# ignored. To tell which happened, re-record the failing fixture at the new head with
-# `hermes record` and diff it against the checked-in one.
+# Runs the hand-verified table (tests/verified.json) against the live chain. It is kept apart
+# from CI on purpose: CI replays pinned fixtures, so red there means Hermes regressed. Red here
+# means Hermes regressed *or the chain moved* (an admin was transferred, a threshold changed).
+# Collapsing the two into one red X is how a suite gets ignored. To tell which happened,
+# re-record the failing fixture at the new head with `hermes record` and diff it against the
+# checked-in one.
+#
+# The job is not `continue-on-error`: that reported every run green, so a row that stopped
+# matching told nobody. Nothing depends on this workflow, so red here blocks no pull request.
+# An endpoint that would not answer (exit 2) is a warning, not a failure: it is neither of the
+# two things red means.
 
 on:
   schedule:
@@ -19,7 +24,6 @@ jobs:
   verify:
     name: hermes verify (live)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,4 +35,12 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Verify against the live chain
-        run: cargo run --release --locked -p hermes-cli -- verify
+        run: |
+          set +e
+          cargo run --release --locked -p hermes-cli -- verify
+          code=$?
+          if [ "$code" -eq 2 ]; then
+            echo "::warning::hermes verify could not read every row; none of the rows it read differed"
+            exit 0
+          fi
+          exit "$code"

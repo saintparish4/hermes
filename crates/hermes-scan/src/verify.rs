@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct VerifiedRow {
     /// Fixture file stem under `tests/fixtures/`.
     pub name: String,
@@ -30,7 +31,11 @@ pub struct VerifiedRow {
 
 /// Every column Hermes publishes about a proxy's authority. `None` is a claim too: it says the
 /// answer must be absent, so a row that expects "unresolved" fails if Hermes starts guessing.
+///
+/// A misspelled column would be read as "must be absent" and pass wherever Hermes also has no
+/// answer, so an unknown key is refused instead.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Expected {
     pub kind: String,
     pub terminal_authority: Option<Address>,
@@ -46,6 +51,7 @@ pub struct Expected {
 
 /// How the expectation was established, so a failure can be re-checked by hand in a minute.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Checked {
     pub on: String,
     pub base_block: u64,
@@ -125,6 +131,35 @@ pub fn differences(expected: &Expected, actual: Option<&ProxyRecord>) -> Vec<Str
         show(&actual.depth_unknown_reason),
     );
     out
+}
+
+/// What re-reading one row against a live chain came to.
+///
+/// An endpoint that would not answer says nothing about Hermes or the chain, so it is kept apart
+/// from an answer that differs. Counted together, a throttled morning reads as twenty-two
+/// regressions and the job that reports it gets ignored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Recheck {
+    Matches,
+    Differs(Vec<String>),
+    Undetermined,
+}
+
+/// Compare a live read to the hand-checked answer. Only for reads that can fail: the offline
+/// replay has no outages, and there a missing verdict is a difference (`differences`).
+pub fn recheck(expected: &Expected, actual: Option<&ProxyRecord>) -> Recheck {
+    let Some(record) = actual else {
+        return Recheck::Undetermined;
+    };
+    if record.unresolved_reason.as_deref() == Some("rpc_undetermined") {
+        return Recheck::Undetermined;
+    }
+    let diffs = differences(expected, actual);
+    if diffs.is_empty() {
+        Recheck::Matches
+    } else {
+        Recheck::Differs(diffs)
+    }
 }
 
 fn short(a: &Address) -> String {
@@ -252,6 +287,34 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(differences(&unresolved, Some(&record())).len(), 7);
+    }
+
+    #[test]
+    fn a_live_read_that_did_not_answer_is_undetermined_not_a_difference() {
+        assert_eq!(recheck(&expected(), None), Recheck::Undetermined);
+        let outage = ProxyRecord {
+            kind: "transparent".into(),
+            unresolved_reason: Some("rpc_undetermined".into()),
+            ..Default::default()
+        };
+        assert_eq!(recheck(&expected(), Some(&outage)), Recheck::Undetermined);
+    }
+
+    #[test]
+    fn a_live_read_that_answered_is_held_to_the_table() {
+        assert_eq!(recheck(&expected(), Some(&record())), Recheck::Matches);
+        let mut moved = record();
+        moved.compromise_depth = Some(1);
+        assert!(matches!(
+            recheck(&expected(), Some(&moved)),
+            Recheck::Differs(d) if d.len() == 1
+        ));
+    }
+
+    #[test]
+    fn a_misspelled_column_is_refused_rather_than_read_as_absent() {
+        let row = r#"{"kind": "uups", "compromise_depht": 1}"#;
+        assert!(serde_json::from_str::<Expected>(row).is_err());
     }
 
     #[test]

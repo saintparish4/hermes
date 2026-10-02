@@ -11,15 +11,16 @@ Two jobs check the table:
 
 - **`cargo test`** (every PR). Replays each fixture through the production pipeline and
   compares the result to the table. Offline and deterministic, so red means Hermes regressed.
-- **`hermes verify`** (scheduled, allowed to fail). Runs the same comparison against the live
-  chain. Red means Hermes regressed *or the chain moved*: an admin was transferred, a
-  threshold changed. Re-record the fixture at the new head and diff the two files to see which.
+- **`hermes verify`** (scheduled, daily). Runs the same comparison against the live chain and
+  reports each row as `PASS`, `FAIL` or `UNREAD`. It exits 1 when a row differs: Hermes
+  regressed *or the chain moved* (an admin was transferred, a threshold changed). Re-record the
+  fixture at the new head and diff the two files to see which, then re-check the row by hand or
+  mark it `historical`. It exits 2 when rows went unread and none differed: an endpoint would
+  not answer, which says nothing about Hermes or the chain, so the job warns and stays green.
 
 The rows are chosen by shape, not by TVL. A top-ten-by-TVL list would be ten Safes and would
 miss every branch that has actually broken a resolver, including the one that produced this
 table: an L1→L2 alias published as a single key.
-
-No row covers a timelock yet, because no address in the seed has one in its admin chain.
 
 <!-- table -->
 | # | Contract | Shape | Kind | Root | Chain | Keys | Timelock | Confidence | Checked at | Evidence |

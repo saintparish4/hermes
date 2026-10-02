@@ -17,7 +17,7 @@ use hermes_core::graph_store::Observation;
 use hermes_core::store::{Coverage, DISCOVERY_CAP};
 use hermes_core::{Chain, SeedRow, Store};
 use hermes_scan::discover::{self, Discoverer};
-use hermes_scan::verify::{Checked, differences, load_table};
+use hermes_scan::verify::{Checked, Recheck, VerifiedRow, load_table, recheck};
 use hermes_scan::{
     AuthorityScanner, ChainRpc, Endpoint, Fixture, LiveRpc, RecordingRpc, RunReport, SEED, Scanner,
     Target, finalized_block, scan_and_resolve, scan_into,
@@ -651,44 +651,75 @@ async fn record(
     Ok(())
 }
 
-async fn verify(table: &std::path::Path, endpoints: &Endpoints) -> anyhow::Result<()> {
+/// `verify` exits 2 when rows went unread and none differed.
+const VERIFY_UNREAD: u8 = 2;
+
+fn print_recheck(row: &VerifiedRow, outcome: &Recheck) {
+    let word = match outcome {
+        Recheck::Matches => "PASS",
+        Recheck::Differs(_) => "FAIL",
+        Recheck::Undetermined => "UNREAD",
+    };
+    println!("{word:<6} {:<28} {}", row.name, row.label);
+    if let Recheck::Differs(diffs) = outcome {
+        for d in diffs {
+            println!("       {d}");
+        }
+    }
+}
+
+/// Exit 1 when a row differs, 2 when rows went unread and none differed. An outage is not a
+/// mismatch, and the scheduled job has to be able to tell them apart without reading the log.
+async fn verify(table: &std::path::Path, endpoints: &Endpoints) -> anyhow::Result<ExitCode> {
     let rows = load_table(table)?;
-    let pinned = endpoints.pinned(1).await?;
+    let pinned = match endpoints.pinned(1).await {
+        Ok(pinned) => pinned,
+        Err(e) => {
+            println!("could not pin a block to read at, so no row was read: {e:#}");
+            return Ok(ExitCode::from(VERIFY_UNREAD));
+        }
+    };
     println!(
         "reading Base at block {} and Ethereum at block {}",
         pinned.base_block, pinned.ethereum_block
     );
-    let mut failed = 0;
+    let (mut differ, mut unread) = (0, 0);
     for row in &rows {
         let target = Target {
             address: row.address,
             label: None,
         };
         let scanned = if row.historical {
-            let (scanner, authorities) = endpoints.at_blocks(&row.checked).await?;
-            scan_and_resolve(&scanner, &authorities, &[target], now()).await
-        } else {
-            scan_and_resolve(&pinned.scanner, &pinned.authorities, &[target], now()).await
-        };
-        let diffs = differences(&row.expected, scanned.records.first());
-        if diffs.is_empty() {
-            println!("PASS {:<28} {}", row.name, row.label);
-        } else {
-            failed += 1;
-            println!("FAIL {:<28} {}", row.name, row.label);
-            for d in diffs {
-                println!("       {d}");
+            match endpoints.at_blocks(&row.checked).await {
+                Ok((scanner, authorities)) => {
+                    Some(scan_and_resolve(&scanner, &authorities, &[target], now()).await)
+                }
+                Err(_) => None,
             }
+        } else {
+            Some(scan_and_resolve(&pinned.scanner, &pinned.authorities, &[target], now()).await)
+        };
+        let outcome = recheck(
+            &row.expected,
+            scanned.as_ref().and_then(|s| s.records.first()),
+        );
+        print_recheck(row, &outcome);
+        match outcome {
+            Recheck::Matches => {}
+            Recheck::Differs(_) => differ += 1,
+            Recheck::Undetermined => unread += 1,
         }
     }
-    if failed > 0 {
-        anyhow::bail!(
-            "{failed} of {} verified rows no longer match the live chain",
-            rows.len()
-        );
-    }
-    println!("all {} verified rows match the live chain", rows.len());
-    Ok(())
+    println!(
+        "{} match, {differ} differ, {unread} unread, of {} verified rows",
+        rows.len() - differ - unread,
+        rows.len()
+    );
+    Ok(match (differ, unread) {
+        (0, 0) => ExitCode::SUCCESS,
+        (0, _) => ExitCode::from(VERIFY_UNREAD),
+        _ => ExitCode::from(1),
+    })
 }
 
 #[tokio::main]
@@ -734,6 +765,7 @@ async fn main() -> anyhow::Result<ExitCode> {
                 check::check(&deployments, &policy, source, json).await
             }
         }
+        Command::Verify { table, endpoints } => verify(&table, &endpoints).await,
         command => run(&cli.database_url, command)
             .await
             .map(|()| ExitCode::SUCCESS),
@@ -785,8 +817,10 @@ async fn run(db: &str, command: Command) -> anyhow::Result<()> {
             out_dir,
             endpoints,
         } => record(address, &name, (block, l1_block), &out_dir, &endpoints).await,
-        Command::Verify { table, endpoints } => verify(&table, &endpoints).await,
         Command::Pin { endpoints, limit } => pin(db, &endpoints, limit).await,
+        Command::Diff { .. } | Command::Check { .. } | Command::Verify { .. } => {
+            unreachable!("dispatched by main, which owns their exit codes")
+        }
         offline => run_offline(&open(db).await?, db, offline).await,
     }
 }

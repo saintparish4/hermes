@@ -1,0 +1,2013 @@
+{
+ "authorities": [
+  {
+   "address": "0x6454cf0127a153295435160768C85225Cd19Bf15",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 67,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xDecAFC622524Ab744Ca76e12c89aD16db338b3B1",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 62,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c",
+   "chain": "ethereum",
+   "compromise_depth": 11,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 20,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1f1Babb2f765E2B22E97cB9ec60Bddd59d040A59",
+   "chain": "base",
+   "compromise_depth": 4,
+   "confidence": "medium",
+   "kind": "safe",
+   "proxy_count": 15,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x76e1736ea8Cda4d0Ed4923B8E119586716C5725f",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 10,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xc50932eDd1c14272AA35324dfC45A19Ec57839Aa",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 8,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x25fF289bF5517ceCd001b614032ec6D880Ee755F",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 6,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x2D424db423527c7F0D49Fe6943aB9E7708F7d624",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 6,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4DD64cE164B74f1F27B414385323b0bA81c5eC36",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 6,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xac808840f02c47C05507f48165d2222FF28EF4e1",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 6,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x61e8AC0a758AfEEFBD556f713ecF0A8cbd00288f",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 5,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x6BBf498C429C51d05bcA3fC67D2C720B15FC73B8",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "medium",
+   "kind": "timelock",
+   "proxy_count": 5,
+   "timelock_seconds": 7200
+  },
+  {
+   "address": "0x9230F9cBAca32bad2B19CAB331d3e6509B8EB0cB",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "medium",
+   "kind": "timelock",
+   "proxy_count": 5,
+   "timelock_seconds": 172800
+  },
+  {
+   "address": "0x93eF84c814c72f769488d938E8Dd6d1a791c2854",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 5,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xB34567C4cA697b39F72e1a8478f285329A98ed1b",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "medium",
+   "kind": "timelock",
+   "proxy_count": 5,
+   "timelock_seconds": 172800
+  },
+  {
+   "address": "0xe543bF80391E845A4C641A9f51439C79dA757b87",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 5,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xf334412B96FE4a9Fc0a93D6297574a3b30217E64",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 5,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x05406F7346206d2dF668a1F1B3147322DF7B7F40",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 4,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4ee5D45eB79aEa04C02961a2e543bbAf5cec81B3",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 4,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x6715F6481060cfDb8379BA67220A5423186830c7",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 4,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8277f9E1D0165d7fc8aa520Ac19F53Fe35959fDe",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 4,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xD6d9b28b9d99B14d199CF88f0618f128E5121b74",
+   "chain": "base",
+   "compromise_depth": 4,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 4,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xdB0E70C1451aFA45D34FC16f55B7dbd9b4181010",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 4,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xf74f32aDC8db9d2e93A230D80b1603BC81bDa8e9",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 4,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x0fB3945B994776D3Bb4B2774Cd720B0CC38E88f6",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1f7dBb3EAF6d247c01F0cD27FEb10b3B659e5481",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x25173E787F254b5a256E29cB9223e3572e0A0719",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x262A8D2F2aEdb692A1332C50C90DF83B5046eAD2",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x2D7Da553cF3d426b43AEB5eF7BB6499139204Ddd",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x3B3438dC61Fc8D56AB2D9156B0712699C1C21a46",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4A481B0486c00E013122E8bBf05F8c0220e26e85",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x5f42bEe2fa3073d75c9d1B68D68DdD4142Bb5124",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7E9677c1f9a93bF2B2bb0B59c25309c42B6e808b",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x826feA08DEA99aaF9a3e500464CCD006e30652D9",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8FA9aa69a6e94c1cd49FbF214C833B2911D02553",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8f3eD11b016DD277C3793bC3dC8d5B03aDDf61cf",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x91093818ef6A195fb9b453F8335a25Bd930DF4bd",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x92B49158013405778718E8B0CBF795aAeE2ff490",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x965d55A653ECB2b34c18379fD7394FA74da9cBb2",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xA064DB8fbFe520664442ee0E2650cc1C6c8f971e",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xA502cCaCbc97aCA8F507660e246deeaf6C1cE617",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xA7dfBe57a1647BEa2638BC66e2C048c4Cb33021e",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xAe009d532328FF09e09E5d506aB5BBeC3c25c0FF",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xE2cD6bBad217C1495B023dBa35b40236280Dc356",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xEcfbEFF2ff4633D15873ee6E2CE72B05d6B8ed27",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xF7fB4Af6d2650B0A8E6C61564aaaCd9cDa9a34D1",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xb045571F321dfF9DE46eCc204D128aa68BE47adb",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xc33539b3cA1923624762E8a42D699806C865D652",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xd396CcB6770EAB84045c9Bce2939c478639E2A7F",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xdF52b5A03E3F5a4178E4F63e8BC51abE691B898F",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "medium",
+   "kind": "timelock",
+   "proxy_count": 3,
+   "timelock_seconds": 86400
+  },
+  {
+   "address": "0xe464B756274613F821Bc3cA5c971e008C9DB127c",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 3,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x00BcC26E792E393217bA895f5e85AE628FC994E9",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x10bb7ACE3EFEcc0C06614559A16417031A6310dF",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1248163214D9A0D6F02932A245370D3fD9613A82",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "medium",
+   "kind": "timelock",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1A17beA23DFa5D9CF5B0d0838C826Ad88537c6fb",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1C8236B406911A376369e33D39189F1b4B39F27D",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4D4F2f9502B8292e309bE0698476cCbd5D5bBf33",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x5183E0203858aa3E3bc3A7D9cb41875a4c0A6216",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x574e77B7819B26CbdD30431Cf256eeAb760a50aE",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x6D7a48dd19d85a3075068c2F57602d28D0a610b9",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x6ccBA91cb18b46F28528426CACE807a5C61e699d",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7389Ec4FB686a16966f2975758e9F1B8345f5e63",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x740bD5f666bFE14c5487c5F34849EE53D4Df091f",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x75EB3d1c6A64cB887BCB745479DC6Ce85FaE99da",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7600A85c09D6E6675854D0a923a85E9c4260d88a",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x79cc7cFf2e20985a06AfD2796E510c02cf30B6c4",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7Cd915405F4e76f97a005eAEA0d67dBD5979ef1f",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7D40aC593332049a189Cd5AeF94B049657F14130",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8107570bfDce85997ac1908Cc5ad56Fc63a1b943",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x95b2C0Bcb420cc22E2dDf6307A49E0a9F61Cd14b",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xD0A0584Ca19068CdCc08b7834d8f8DF969D67bd5",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xD8ba46B6fc4b29d645eE44403060e91F38fbF9C1",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xFcc65cb843f0667883f3Ac805291511c76B0B5EF",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xa4659995DC39d891C1bA9131Aaf5F000E5B57224",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xb89AC7e7D462be47B58B40a30410c8336873277B",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xbce73136835B2339B0C5ABca28B7DCdF76287c66",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xc5093228529547272bE5E58db15a5d36fb2C0424",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "safe",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xcD301D52eb89FF130F758006Df77E0A9323502ed",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "medium",
+   "kind": "safe",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xdECAF122E4d89afBCeCC341ECFe9987A67cDF93E",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xe5703c99c9d79f2FdD63764b529A7B9496E52AFD",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xf425ed48483B49cF10C8a7f6cFd25dFD86d3155a",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "medium",
+   "kind": "timelock",
+   "proxy_count": 2,
+   "timelock_seconds": 259200
+  },
+  {
+   "address": "0xfC95c9Ffba80CB60f76C653EA8E5CE01253b6C6a",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 2,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x000000dBc80bF780c6dc0ca16ed071b1F00Cc000",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x01503D9c6973AeBe35872671B34b23312438e182",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x01E87cAA86C91C65d2E3E74A9dfAc972C0b8944e",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x03ecbe927f19fdBDe5D00FE1427ED98b554d8cA7",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x0451b8C0079d4e515442dAEa146345Ae1C81CE4e",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "medium",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x047a4758630f6553261f6090e418459a4118f3Be",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x054ADd64AC1A53F5B3AAB34CC11C091701C9F663",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x0661c49C16a2d0e423EFAE63e0cDC1FEC9527b55",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x081Bc58a9538b1313e93F6bBC6119Ac6434FbE05",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x0BaC59Fc3865226b1e95602cBc9A5d2880F76030",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x0E5ec65ea055937646Ab029ef3644DE3dE67766A",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x0cF98fa1Df602E317651b4B081138292d056411b",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x0d5BD9F27DDCCB2541DDbF4cf2Ae344DC0048741",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x0dC2CCB686C94643eE7aD8D6f1D75aea40651A97",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x11e5D4c48B1928dd169C8A5b9e9e2223F82721b1",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1A8A95356B23E046c68b51C93d9804dD6E91d19D",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1C96019DEcD2e207d9d62D3C0A3a6a41bA6AbFB8",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1dbF2fd962E32Fa6087185F3287a052fC9227297",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x1fd866A03157030a4c845879A620fcF05C700b7B",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x20Bf4a4CAdB6722CBDFcCf9bD75541877122305C",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x214d0683A3EC2d3442FBEd5a81325119e919B16B",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x245587c091D15A27a3a1e4039c8c38F03e5812A1",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x271E1D6334f6424A58B5e6940F5f5e679eb4247C",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "medium",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x27Db2dDeC1b2030287beEbA4910fa0DEBCEA4353",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x28261747A227106B94f901a5B7D0992eeCFAA378",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x289715fFBB2f4b482e2917D2f183FeAb564ec84F",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x29B432Eca1b520f59bFCDd9A74Af919d5576F972",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x2d95B81E573462217494F257904a86c4Ef52a68B",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x3059bD2EFCB6BD1917d5ef8768AC944E074E2B1d",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x34ffb31CEd73de5E7043037c6b91C4A9bf84CE7D",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x37071Ca4E847769431F17d16C775927847514c80",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x3B24342aC73efB601a7987390185eC458b15e824",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x3a93215c47FaA1DedA719cA153008d2FE27425fa",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x3dAaFDb01e73B17210E11a5523c932f8A64aAC1e",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x40322DcF2400eAB8788e5C46017E797Cc3e6cb1e",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x45A5fFe36838db3dC6610740E936F608446c136E",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x473C45ba792f6D21d5822f282A1Ed1310CF12523",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4755D28078442cb7E7Ac2409868fb3Ff1B9fA73B",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x47898746B627B73EB781d834e0F2Ac98d62763a6",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4C765713D34637f3F1c94ca50E4817B28E0Bf5d4",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4D5BA70D2f7bD991BF09A5979e5F5e7dCAD04679",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4be78f37ebf9613eeA779f2E55fC15232de832CE",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x4dC44C995dC87Dd11C53d0fF073B88051C2087A4",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x52904c007ecF56c5c7E578077de2dBd0168D034b",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x5307d18b1A4C8F6866fD0faDf87e5A475D414Fd2",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x57f257e58b1831E4E57815026E889203c4338C22",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x584b1B9a460AdB568758aD581991606485B2bF94",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x5C55dD20186cC62D709D897E58CB697dA874F026",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x5da31d4e85cB52Ef9186aFc3796478e850A47362",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x62998e172240F4CC26EC10717d16a8D4442bf2Dd",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x647CcEA213E6b1Ac6Efd8b6b9a0D057EdE7cfF02",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x64d4FCC3Bb197E4252BF44a2a9166fFf1faa90B9",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x671823a8318E526e9FcCb0bA58F7b5c3243AfB84",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x673f0Adc28BC674b625206d37c09C9e56F8E0346",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x6860385f065b70773A3384053D5e794Fd72519cc",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x6D5bC1a2cBB53010073AEFf76B8cfF24992DD1e3",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x707e17f496A4A0cC6E0EdA73480809B2385A7213",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7202136d70026DA33628dD3f3eFccb43F62a2469",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x727c356b7FC10Dc36c273883Ec5034Dbd489A5C2",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x73E1A59bbfb5525b26e5D3690E78A428E763a67d",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7436FC80F92f0588518FbaBC19E813dbC54b88C1",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x756a5A827e505a34857F4259015744FF69918339",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x777A016BD5e5C02A71d1Ae12f08C0C42B39ce423",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x77c168A75469FE3891F18B674B628B6934ACA574",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x77cF27635A867B95D616ca1621bCc34256fD916E",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7E06eD3550381d26b690aC31afC68e86B8c5d978",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7F2f87B0Efc66Fea0b7c30C61654E53C37993666",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x7f2281FACDE2f04b4Af8CAe396EeA24fe18F5c42",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x87DF0DB8A74e85226b3404a50C60c07706878838",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8Bfe825B008D821278a7E0b6da3219b39bbd807c",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8E1cC043880Eb79D33dbF5FE503b1334808D968d",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8E29443aB33471Ce27c79C4a54B5DA3A3a75B766",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8E53855a56Bd8693F461Ccb74427eC69DEc5A68b",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8Eae0191d86628B0f1e3A1A78C9879a2139E5d1D",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8b5Ff6A6710132c6c0f543d04B085ED98834A707",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8b72904e3685448E6f890d65a15D2aA206C1e0ab",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x8ebD04b2fbA00418Be00329146837dcE51F02c00",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x90a43aa9401774e7224659923E9a6C60B22c9F53",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x91736295e68Df649A7daF2B8B1DF6140C15858BD",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x920F6A03EaFc80C5C4119383AEE56CeCea115377",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x953832A125B091cC8C99f90d2f7DaB79e8326076",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x95e4C61bC23f558a844e6C6bDA3D38F7570D4b80",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x96d9894371d8cf0C566F557bc8830F881E4D6c7a",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x99834733C91aAE2f5BB0725105c9E843Cb297A27",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x99859623CD5cF2614118411C9D1eE5CbC99D26f7",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x9B738aB225a7f287D7F94B743c16daA29f7422b6",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x9EAB9D856a3a667dc4CD10001D59c679C64756E7",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x9a4FB7C83f9af5eff43C5413674b0171e014E5D2",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0x9d6504E8fa599049425a65ce0860bA5cE10837f3",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xA0D1D5caEFFB3af74e3fCDC5c23bfa73E5A55bB7",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xA3eA3a2a8B494eE37Ec9B14aA637Fd3e9f635C3e",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xA40d1Bd41F2eB8720F6d6AC4A651Ba55373afDBD",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xBF8Bc79F735CC95ebeB9f0Da9A9267b9fea42b50",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xC11f4C91a201461a22EEE735E7EF6f07cdecEcbF",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "medium",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xC2C2098a306274332650B5DF0c42745f60266F82",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xC78BC588e970501432B2583eC1b6d2f4509b3B55",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xD105eA70Ca301ac7230820Cb9E70c8A434993F80",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xD1dcdD8e6Fe04c338aC3f76f7D7105bEcab74F77",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xD246C16EC3b555234630Ab83883aAAcdfd946ceF",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xD6B7dcE16918ea3d106eE95f4208FE366D4ca555",
+   "chain": "base",
+   "compromise_depth": 2,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xD8C36DDADd9e7a4cCe4597c1dDc01672CF844dc1",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xDB6331181c5c07bAD52DfB69a32c14d07e8EF240",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xDf5D3a3693D4E16E564Ac1F5B839d0d16dB5AE8A",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xE0EAa9C024db14bD7Ea007c249F0F689A35A8Aa7",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xEB8A1B8865589A84EB08579e96c4AA0F02094108",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xED518109111780da7fCc1b765b80EB09D67aD5A7",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xEbB0C9E88c5F5167E54928d1B232a36d2569f104",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xEc737789a06B98494584E9cD9224CD4e25C1A2F3",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xF106A61656421d38dd9D5Af6C700F6Cb16c7Fc4A",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xF63B3B4F138075d4E6785db9a5ec9657eC5969EB",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xFF9d76F5ff713e1ce4808eef18908C70C786f73C",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xFb7ae3799319a89897045bB362D7a0cd4e8Bb5Ed",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xa0819ae43115420beb161193b8D8Ba64C9f9faCC",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xa65Af49aD6f13b5b737274a023004B8D35172A45",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xb31650a68d79164AFa7141fFABE288261a27c12E",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xbF4485DE064c74227996D8d965afF37159A18788",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xbb0799FdD850Bc1cB671b5eDe8cCeEd3624b1AaF",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xbd028635F7437cb7a7578414C6105B1eB06eEa16",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xbd51F582d65B3ad6065c34fdF1Ecd2bd4d3BC58A",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xc8D1d96e6Edd2AAfDb6DD1F01E47A4A0e43deC53",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xd69b78D2A00790a9a23F7932b62DE51d0f3079B8",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xd94E416cf2c7167608B2515B7e4102B41efff94f",
+   "chain": "base",
+   "compromise_depth": 3,
+   "confidence": "high",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xe337c2582293066DFBBA32Fe32abE36Ade86bb3A",
+   "chain": "base",
+   "compromise_depth": null,
+   "confidence": "medium",
+   "kind": "safe",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xe37aeaE21E50C97766E3acc6F9F34d4332dd239A",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xe453461EF0Ce704042967e03052b169AbEfE224b",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xeA3FCB45f8E27F4fc30675e760d1109f7911B579",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xeF9053162cb03F64fa9D5FBE870737c370F4CABc",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "high",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xf3f769b338431e84Bb1582ad078f5C21bE7602a2",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xf57fc7b8F823760ac6F91aed9FF150aCe5dcb566",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  },
+  {
+   "address": "0xfF3efd475907F5c6dC173Fe42c2dD3a58eF740bf",
+   "chain": "base",
+   "compromise_depth": 1,
+   "confidence": "medium",
+   "kind": "eoa",
+   "proxy_count": 1,
+   "timelock_seconds": 0
+  }
+ ],
+ "changes_24h": null,
+ "changes_error": "JSONDecodeError",
+ "coverage": {
+  "by_kind": [
+   [
+    "uups",
+    485
+   ],
+   [
+    "beacon",
+    265
+   ],
+   [
+    "transparent",
+    206
+   ],
+   [
+    "not_upgradeable",
+    16
+   ],
+   [
+    "eoa",
+    7
+   ],
+   [
+    "admin_only",
+    2
+   ],
+   [
+    "zeppelin_os",
+    2
+   ]
+  ],
+  "covered_proxies": 958,
+  "depth_unknown_by_reason": [
+   [
+    "owners_unknown",
+    51
+   ]
+  ],
+  "discovery_per_family": 3,
+  "distinct_admins": 157,
+  "distinct_authorities": 214,
+  "last_scan": 1790897824,
+  "resolved_by_path": [
+   [
+    "beacon",
+    205
+   ],
+   [
+    "admin_slot",
+    171
+   ],
+   [
+    "uups_owner",
+    170
+   ]
+  ],
+  "resolved_proxies": 546,
+  "seeded_by_source": [
+   [
+    "event",
+    922
+   ],
+   [
+    "curated",
+    61
+   ]
+  ],
+  "total_scanned": 983,
+  "unresolved_by_reason": [
+   [
+    "unrecognized_interface",
+    349
+   ],
+   [
+    "uups_unconfirmed",
+    63
+   ]
+  ]
+ },
+ "fetched_at": 1790959469,
+ "source": "https://hermes-production-29bf.up.railway.app"
+}

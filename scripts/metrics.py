@@ -4,26 +4,63 @@
 Dev-only, stdlib-only, read-only: it asks the public JSON API what it currently serves, so
 the numbers in the progress log are ones a stranger could reproduce with curl.
 
-    python3 scripts/metrics.py                       # the live deployment
-    python3 scripts/metrics.py http://localhost:8080 # a local `hermes serve`
+The answers are saved under docs/snapshots/ before anything is counted, and the row is computed
+from that file. A live instance moves on with the next scan; without the file, a row in the log
+could not be recomputed or compared with the one after it.
+
+    python3 scripts/metrics.py                         # the live deployment
+    python3 scripts/metrics.py http://localhost:8080   # a local `hermes serve`
+    python3 scripts/metrics.py --from docs/snapshots/2026-10-02-live.json
 """
 
 import json
+import pathlib
 import sys
 import urllib.request
 from datetime import datetime, timezone
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "https://hermes-production-29bf.up.railway.app").rstrip("/")
+LIVE = "https://hermes-production-29bf.up.railway.app"
+SNAPSHOTS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "snapshots"
 
 
-def get(path):
-    req = urllib.request.Request(BASE + path, headers={"user-agent": "hermes-metrics"})
+def get(base, path):
+    req = urllib.request.Request(base + path, headers={"user-agent": "hermes-metrics"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.load(r)
 
 
-cov = get("/coverage")
-auth = get("/authorities")["authorities"]
+def fetch(base):
+    snap = {
+        "source": base,
+        "fetched_at": int(datetime.now(timezone.utc).timestamp()),
+        "coverage": get(base, "/coverage"),
+        "authorities": get(base, "/authorities")["authorities"],
+    }
+    # Instances deployed before the kept graph have no /v1; everything else still reproduces.
+    try:
+        snap["changes_24h"] = get(base, "/v1/changes?since=24h&limit=1000")["count"]
+    except Exception as e:  # noqa: BLE001 - reporting, not handling
+        snap["changes_24h"] = None
+        snap["changes_error"] = e.__class__.__name__
+    return snap
+
+
+def save(snap):
+    day = datetime.fromtimestamp(snap["fetched_at"], timezone.utc).strftime("%Y-%m-%d")
+    where = "live" if snap["source"] == LIVE else "local"
+    SNAPSHOTS.mkdir(parents=True, exist_ok=True)
+    path = SNAPSHOTS / f"{day}-{where}.json"
+    path.write_text(json.dumps(snap, indent=1, sort_keys=True) + "\n")
+    return path
+
+
+args = sys.argv[1:]
+if args[:1] == ["--from"]:
+    path = pathlib.Path(args[1])
+else:
+    path = save(fetch((args[0] if args else LIVE).rstrip("/")))
+snap = json.loads(path.read_text())
+BASE, cov, auth = snap["source"], snap["coverage"], snap["authorities"]
 
 single_key = [a for a in auth if a.get("compromise_depth") == 1]
 unknown_depth = [a for a in auth if a.get("compromise_depth") is None]
@@ -31,7 +68,7 @@ top = auth[0] if auth else None
 last = cov.get("last_scan")
 when = datetime.fromtimestamp(last, timezone.utc).strftime("%Y-%m-%d %H:%MZ") if last else "never"
 
-print(f"source: {BASE}   last scan: {when}")
+print(f"source: {BASE}   last scan: {when}   snapshot: {path}")
 print()
 print("| scanned | covered | resolved | roots | single-key roots (proxies) | depth unknown | largest root |")
 print("|---|---|---|---|---|---|---|")
@@ -56,10 +93,16 @@ for a in auth:
     kinds[a.get("kind")] = kinds.get(a.get("kind"), 0) + 1
 print(f"\nroots by kind: {sorted(kinds.items(), key=lambda kv: -kv[1])}")
 
-# Instances deployed before the kept graph have no /v1; everything above still reproduces.
-try:
-    changes = get("/v1/changes?since=24h&limit=1000")
-    print(f"\nchain changes in the last 24h: {changes['count']}")
+# A resolver that guessed would raise "resolved" too. The split by confidence is what shows
+# whether new answers are ones Hermes is sure of.
+by_confidence = {}
+for a in auth:
+    roots, proxies = by_confidence.get(a.get("confidence"), (0, 0))
+    by_confidence[a.get("confidence")] = (roots + 1, proxies + a["proxy_count"])
+print(f"\nroots (proxies) by confidence: {sorted(by_confidence.items(), key=lambda kv: str(kv[0]))}")
+
+if snap.get("changes_24h") is None:
+    print(f"\n/v1 not served here ({snap.get('changes_error')}); no change counts")
+else:
+    print(f"\nchain changes in the last 24h: {snap['changes_24h']}")
     print(f"sighted by discovery: {cov.get('proxies_sighted')} proxies in {cov.get('families_sighted')} families")
-except Exception as e:  # noqa: BLE001 - reporting, not handling
-    print(f"\n/v1 not served here ({e.__class__.__name__}); no change counts")

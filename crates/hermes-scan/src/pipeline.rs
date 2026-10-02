@@ -140,16 +140,7 @@ pub async fn scan_into(
         for r in &mut scanned.records {
             r.scanned_block = obs.base_block;
         }
-        let canary = canary::check(&covered_before, &scanned.records);
-        if canary.tripped() {
-            anyhow::bail!(
-                "refusing to publish a batch in which {} of {} known proxies stopped being \
-                 covered; an endpoint failing is likelier than the chain changing, and nothing \
-                 from this batch was written",
-                canary.lost,
-                canary.known
-            );
-        }
+        refuse_a_lying_batch(&covered_before, &scanned.records)?;
         let written = store
             .write_batch(obs, &scanned.records, &scanned.probes)
             .await?;
@@ -166,6 +157,26 @@ pub async fn scan_into(
         );
     }
     Ok(report)
+}
+
+fn refuse_a_lying_batch(
+    covered_before: &HashSet<String>,
+    records: &[ProxyRecord],
+) -> anyhow::Result<()> {
+    let canary = canary::check(covered_before, records);
+    // Logged for every batch, tripped or not: the threshold was chosen without knowing how
+    // many known proxies an honest batch loses, and these lines are that measurement.
+    tracing::info!(known = canary.known, lost = canary.lost, "canary");
+    if canary.tripped() {
+        anyhow::bail!(
+            "refusing to publish a batch in which {} of {} known proxies stopped being \
+             covered; an endpoint failing is likelier than the chain changing, and nothing \
+             from this batch was written",
+            canary.lost,
+            canary.known
+        );
+    }
+    Ok(())
 }
 
 /// The row one probe earns, or `None` when it earned nothing publishable.

@@ -657,6 +657,63 @@ mod tests {
         assert_eq!(decode_bytes(&empty), Some(&[][..]), "a removed owner");
     }
 
+    fn abi_bytes(payload: &[u8]) -> Bytes {
+        let mut data = word("20");
+        data.extend(U256::from(payload.len()).to_be_bytes::<32>());
+        data.extend(payload);
+        Bytes::from(data)
+    }
+
+    fn account_with_owners(owners: &[&[u8]]) -> (Node, AuthorityScanner) {
+        let node = Node::base(address!("00000000000000000000000000000000000000c1"));
+        let mut reads = crate::rpc::ChainReads::default();
+        let calls = reads.call.entry(node.address).or_default();
+        calls.insert(
+            Bytes::from(selector("nextOwnerIndex()").to_vec()),
+            crate::rpc::CallRead::Ok(Bytes::from(
+                U256::from(owners.len()).to_be_bytes::<32>().to_vec(),
+            )),
+        );
+        for (i, owner) in owners.iter().enumerate() {
+            calls.insert(
+                Bytes::from(calldata(
+                    "ownerAtIndex(uint256)",
+                    &[U256::from(i).to_be_bytes()],
+                )),
+                crate::rpc::CallRead::Ok(abi_bytes(owner)),
+            );
+        }
+        let endpoint = |reads| {
+            Endpoint::new(
+                Arc::new(crate::rpc::ReplayRpc::new("account", reads)),
+                Duration::ZERO,
+            )
+        };
+        let scanner = AuthorityScanner::new(
+            endpoint(reads),
+            endpoint(crate::rpc::ChainReads::default()),
+            1,
+        );
+        (node, scanner)
+    }
+
+    /// A passkey is a signer with no address. Dropping it, or giving up on the account because
+    /// of it, both passed every suite until this test: no recorded account has one.
+    #[tokio::test]
+    async fn a_passkey_owner_is_counted_and_a_removed_one_is_not() {
+        let key = address!("00000000000000000000000000000000000000a1");
+        let (node, scanner) = account_with_owners(&[key.into_word().as_slice(), &[7u8; 64], &[]]);
+        let owners = scanner.account_owners(node).await.unwrap().unwrap();
+        assert_eq!(owners.addresses, vec![key]);
+        assert_eq!(owners.passkeys, 1);
+    }
+
+    #[tokio::test]
+    async fn an_owner_of_any_other_length_leaves_the_whole_list_unread() {
+        let (node, scanner) = account_with_owners(&[&[7u8; 48]]);
+        assert_eq!(scanner.account_owners(node).await, Some(None));
+    }
+
     #[test]
     fn a_count_too_large_to_be_a_signer_list_is_refused() {
         assert_eq!(bounded_count(&word("03")), Some(3));

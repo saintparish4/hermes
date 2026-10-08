@@ -8,6 +8,18 @@ from `cargo test --workspace` on the named commit.
 `hermes scan` against the public endpoints into an empty database on the named date. A local
 row is what the next deploy will serve; it is not live until it is deployed.
 
+## Where things stand (2026-10-07)
+
+- **`master` is the authority graph** (`712bb0d`): the kept graph and its change history, block
+  pinning, blast radius, `hermes check` and its GitHub Action, `/v1`, authority pages,
+  `/methodology` and [LIMITATIONS.md](../LIMITATIONS.md). Merged by fast-forward from
+  `authority-graph`; fmt, clippy, 251 offline tests, the locked build and the `home/` build are
+  clean on it.
+- **Live still runs step 4** (`9d1ef16`). `/v1`, `/methodology` and the authority pages the
+  README links are not served until the next deploy, which also runs the graph migration over
+  the live database (`04e47c0` tests that migration against the deployed schema).
+- **Owed:** that deploy and its scan row, the human "open every link" pass, and the write-up.
+
 ## Scan
 
 | Date | Milestone | Where | Scanned | Covered | Resolved | Roots | Single-key roots (proxies) | Largest root |
@@ -17,6 +29,7 @@ row is what the next deploy will serve; it is not live until it is deployed.
 | 2026-09-19 | Step 3: UUPS, beacon, reasons | local | 62 | 58 | **43** | 16 | 9 (11) | Safe on Ethereum, 20 proxies, 11 keys |
 | 2026-09-20 | Step 4: chain-wide index | local | **964** | **939** | **531** | **206** | 163 (384) | EOA on Base, 65 proxies, 1 key |
 | 2026-09-20 | Step 4 deployed (`9d1ef16`) | live | 964 | 939 | 531 | 206 | 163 (384) | EOA on Base, 65 proxies, 1 key |
+| 2026-10-02 | Step 4, re-read (`9d1ef16`) | live | 983 | 958 | 546 | 214 | 170 (331) | Safe on Base, 67 proxies, 2 keys |
 
 Step 3 breakdown: resolved by path, admin slot 28, UUPS `owner()` 9 (all Medium), beacon 6.
 Unresolved by reason: `unrecognized_interface` 14 (7 under `0x31e9…0c17`, 5 UUPS without an
@@ -34,6 +47,15 @@ the 531 resolved: High 348, Medium 183. Of the 206 roots, 161 are EOAs, 39 Safes
 The index is a sample, not a census: discovery reads 1,000-block windows at fixed positions
 every 500,000 blocks and caps each family at 3, so every count here is within that sample.
 
+2026-10-02 re-read: the same step 4 code after twelve days of daily discovery and scans, reproducible
+with `python3 scripts/metrics.py --from docs/snapshots/2026-10-02-live.json`. The largest root
+moved because of the 2026-09-29 transfer (findings log): the 2-of-5 Safe `0x6454…Bf15` now
+heads 67 proxies. Resolved by path: beacon 205, admin slot 171, UUPS `owner()` 170.
+Unresolved by reason: `unrecognized_interface` 349, `uups_unconfirmed` 63. Roots: 168 EOAs,
+40 Safes, 6 timelocks; 16 with an unknown key count (51 proxy rows, `owners_unknown`). It is
+the last row under the step 4 resolver: the next deploy reads with model version 3, so a
+change in its counts is not by itself a change on chain.
+
 ## Engineering
 
 | Date | Milestone | Offline tests | Flaky-test failure rate | Full scan wall clock | Notes |
@@ -43,14 +65,15 @@ every 500,000 blocks and caps each family at 3, so every count here is within th
 | 2026-09-19 | Step 2: reliable gate, verified table | 114 | **0/200** (20/60 with the old code put back) | 2m54s | 11 hand-verified addresses replayed offline in 2.8s; live `hermes verify` 11/11 in 1m39s |
 | 2026-09-19 | Step 3: UUPS and beacon paths | 127 | 0 | 6m37s | 13 verified rows; more nodes probed at 1 call/s, so the scan more than doubled |
 | 2026-09-20 | Step 4: chain-wide index | **148** | 0 | 2h15m31s (964 addresses) | Discovery 2m07s for 104 windows. Resumability re-proven: SIGKILL at 912s left 100 rows durable, the resumed pass wrote the remaining 864 in 18 batches, 0 failed, 0 unconfirmed, 21 confirming re-reads |
+| 2026-10-07 | Authority graph merged (`712bb0d`) | **251** (1 ignored: the hand-run `docs/verification.md` writer) | not re-measured | not recorded | 22 verified rows, two of them the historical sides of the 2026-09-29 transfer. Key count held to a brute-force minimum over 300 random graphs |
 
 ## PRD §8 minimum bar
 
 | Bar | State |
 |---|---|
-| Deployed, public, no login | Yes |
-| ≥500 proxies indexed and ranked | **Yes: 939 covered**, live since 2026-09-20 |
-| Ten protocols hand-verified | **Yes: 13**, by shape, replayed in CI ([docs/verification.md](verification.md)). The human "open every link" pass is still Sharif's |
+| Deployed, public, no login | Yes (step 4; the authority graph is not deployed yet) |
+| ≥500 proxies indexed and ranked | **Yes: 958 covered** on 2026-10-02, live since 2026-09-20 |
+| Ten protocols hand-verified | **Yes: 22 rows**, by shape, replayed in CI ([docs/verification.md](verification.md)). The human "open every link" pass is still Sharif's |
 | README a stranger can follow | Yes, and the headline claim is now correct |
 | One published write-up | No |
 
@@ -116,3 +139,19 @@ every 500,000 blocks and caps each family at 3, so every count here is within th
   proxy (`0xF1CC…1D41`, Medium). It has no code, so by the probe rules it is an EOA, but it is
   a sentinel no one is known to hold a key for. Hermes reports what the chain says and does
   not infer "renounced"; whether well-known sentinels deserve their own kind is open.
+- **2026-09-29: the largest single-key authority handed over its beacons.** Starting at Base
+  block 51,927,178, `0x21eb…B5fc` moved 27 of the 28 beacons it owned (65 indexed proxies) to
+  `0x6454…Bf15`, a 2-of-5 Safe it is one of the owners of, and kept one. Found by bisecting
+  `owner()` between the 2026-09-20 and 2026-09-29 scans, and kept as two historical verified
+  rows, one each side of the block.
+- **2026-09-30: sentinels are their own kind.** `0x…dEaD`, `0xff…ff` and the precompiles are
+  now `sentinel` roots with no key count, which settles the 2026-09-20 question.
+- **2026-09-30: 23 of 87 "smart accounts" behind unresolved proxies were EIP-7702 delegated
+  EOAs**, two of them behind 25 proxies each. They answered their delegate's interface; Hermes
+  now reads the delegation designator as the key it is.
+- **2026-09-30: a signer shared between branches was counted once per branch.** Summing each
+  branch's cheapest keys overstated the keys an upgrade takes. The count now searches for the
+  fewest distinct keys and reports `shared_signers` when that search is too large.
+- **2026-10-02: the scheduled live re-check could not go red.** The job was
+  `continue-on-error`, so a row that stopped matching reported green, and an endpoint outage
+  counted as a mismatch. `hermes verify` now reports `PASS`, `FAIL` or `UNREAD`.

@@ -28,7 +28,7 @@ runs:
     # Built from the action's own checkout, so a pinned `uses: …@<sha>` runs exactly that code
     # and needs no release artifact to exist.
     - name: Cache the Hermes build
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: |
           ~/.cargo/registry

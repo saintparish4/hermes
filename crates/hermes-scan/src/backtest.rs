@@ -149,6 +149,9 @@ pub fn observed(
     let executed = topic("CallExecuted(bytes32,uint256,address,uint256,bytes)");
     for log in receipt["logs"].as_array()? {
         let emitter = address_of(&log["address"])?;
+        if !seen.emitters.contains(&emitter) {
+            seen.emitters.push(emitter);
+        }
         let topics: Vec<B256> = log["topics"]
             .as_array()?
             .iter()

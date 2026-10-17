@@ -12,7 +12,7 @@
 //!
 //! Pure: walks stored probes and what a receipt was decoded into.
 
-use crate::authority::{AuthorityKind, AuthorityProbe, DepthGap, Resolution, authority_kind};
+use crate::authority::{AuthorityKind, AuthorityProbe, Code, DepthGap, Resolution, authority_kind};
 use crate::blast::reachable;
 use crate::chain::Node;
 use alloy::primitives::Address;
@@ -41,6 +41,10 @@ pub struct Observed {
     pub account_operations: Vec<Address>,
     /// `CallExecuted` emitters: timelocks that executed.
     pub timelock_executions: Vec<Address>,
+    /// Every address that emitted a log in the transaction. An EIP-7702 account that emits ran
+    /// its delegate's code as itself, which is how a relayer submits what its key signed.
+    #[serde(default)]
+    pub emitters: Vec<Address>,
     /// For a root that is an `AccessControl` contract not listing its members: whether the
     /// sender held its upgrade role or that role's admin role the block before, asked of the
     /// contract with `hasRole`. `None` when not asked or not answered.
@@ -74,6 +78,9 @@ pub enum Why {
     TimelockExecuted,
     /// The sender held the root's upgrade role, or its admin role, the block before.
     RoleHolderSent,
+    /// A key in the named authority, delegated under EIP-7702, executed as itself: a relayer
+    /// sent what the key authorized through its delegate.
+    DelegatedKeyExecuted,
     /// A Safe in the named authority executed it, but signed by addresses that were not its
     /// owners, or fewer than its threshold, the block before.
     SignersNotTheOwners,
@@ -148,6 +155,16 @@ pub fn judge(
     if seen.timelock_executions.iter().any(inside) {
         return Judgement::Consistent(Why::TimelockExecuted);
     }
+    let delegated_key_acted = seen.emitters.iter().any(|a| {
+        let n = Node::base(*a);
+        tree.contains(&n)
+            && probes
+                .get(&n)
+                .is_some_and(|p| matches!(p.code, Code::Delegated(_)))
+    });
+    if delegated_key_acted {
+        return Judgement::Consistent(Why::DelegatedKeyExecuted);
+    }
     let sender = Node::base(seen.sender);
     let sender_is_named_key = tree.contains(&sender)
         && probes
@@ -187,7 +204,7 @@ fn signed_as_owners(probe: &AuthorityProbe, signers: &[Address]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::authority::{CANONICAL_SAFE_SINGLETONS, Code, PendingOwner, SafeSetup, resolve};
+    use crate::authority::{CANONICAL_SAFE_SINGLETONS, PendingOwner, SafeSetup, resolve};
     use alloy::primitives::address;
 
     const ADMIN: Address = address!("00000000000000000000000000000000000000a0");
@@ -345,6 +362,36 @@ mod tests {
         );
         seen.sender_held_root_role = Some(true);
         assert_eq!(run(&g, &seen), Judgement::Consistent(Why::RoleHolderSent));
+    }
+
+    /// Found on the first live run (0xFEc3…5f9a and 0x1339…6F93 at 36,500,016): the owner is
+    /// an EIP-7702 key, its delegate's `executeWithSig` was submitted by a relayer, and the key's
+    /// account emitted. That is the named key acting, not someone outside it.
+    #[test]
+    fn a_relayed_call_executed_by_a_named_delegated_key_is_consistent() {
+        let delegate = address!("00000000000000000000000000000000000000de");
+        let mut g = graph(vec![]);
+        g.get_mut(&Node::base(ADMIN)).unwrap().owner = Some(K1);
+        g.insert(
+            Node::base(K1),
+            AuthorityProbe {
+                code: Code::Delegated(delegate),
+                ..Default::default()
+            },
+        );
+        let mut seen = Observed {
+            sender: OUTSIDER,
+            ..Default::default()
+        };
+        assert_eq!(
+            run(&g, &seen),
+            Judgement::Contradicted(Why::ActorOutsideAuthority)
+        );
+        seen.emitters = vec![K1];
+        assert_eq!(
+            run(&g, &seen),
+            Judgement::Consistent(Why::DelegatedKeyExecuted)
+        );
     }
 
     /// The other side: a root Hermes said no one holds a key for, upgraded by someone.

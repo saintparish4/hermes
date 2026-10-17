@@ -772,8 +772,46 @@ fn fewest_distinct_keys(
     Ok(summed)
 }
 
+/// Every distinct key a count under `root` reads, or `None` where there is no count to read
+/// them from, or a passkey is among them (it has no address to hold).
+pub fn distinct_keys(root: Node, probes: &HashMap<Node, AuthorityProbe>) -> Option<Vec<Node>> {
+    let mut found = (Vec::new(), 0);
+    signer_keys(root, probes, 0, &mut HashSet::new(), &mut found)?;
+    if found.1 > 0 {
+        return None;
+    }
+    let mut keys = found.0;
+    keys.sort();
+    keys.dedup();
+    Some(keys)
+}
+
+/// A set of exactly `size` keys that `falls` says takes `root`: the keys a count of `size`
+/// names, so something other than my arithmetic can be asked whether they really do. `None`
+/// when no such set exists, the keys cannot be listed, or the search is too large to run.
+pub fn witness(root: Node, size: u32, probes: &HashMap<Node, AuthorityProbe>) -> Option<Vec<Node>> {
+    let keys = distinct_keys(root, probes)?;
+    let size = size as usize;
+    if size == 0
+        || size > keys.len()
+        || choose(keys.len() as u64, size as u64) > SHARED_SIGNER_SEARCH
+    {
+        return None;
+    }
+    let mut pick: Vec<usize> = (0..size).collect();
+    loop {
+        let set: HashSet<Node> = pick.iter().map(|&i| keys[i]).collect();
+        if crate::blast::falls(root, &set, probes) == Some(true) {
+            return Some(pick.iter().map(|&i| keys[i]).collect());
+        }
+        if !next_combination(&mut pick, keys.len()) {
+            return None;
+        }
+    }
+}
+
 /// Advance `pick` to the next k-combination of `0..n` in lexicographic order./// Advance `pick` to the next k-combination of `0..n` in lexicographic order.
-fn next_combination(pick: &mut [usize], n: usize) -> bool {
+pub fn next_combination(pick: &mut [usize], n: usize) -> bool {
     let k = pick.len();
     for i in (0..k).rev() {
         if pick[i] < n - k + i {
@@ -1807,6 +1845,36 @@ mod tests {
             .min();
         assert_eq!(resolve_base(A, &g).compromise_depth, brute);
         assert_eq!(brute, Some(2));
+    }
+
+    /// The witness is what the oracle acts as, so it must be a set the count names: of the
+    /// count's size, and taking the root.
+    #[test]
+    fn the_witness_is_a_set_of_the_counted_size_that_takes_the_root() {
+        let (k1, k2, k3, k4) = (
+            Address::with_last_byte(0x31),
+            Address::with_last_byte(0x32),
+            Address::with_last_byte(0x33),
+            Address::with_last_byte(0x34),
+        );
+        let g = graph(&[
+            (A, safe(2, &[B, C])),
+            (B, safe(2, &[k1, k2, k3])),
+            (C, safe(2, &[k1, k2, k4])),
+            (k1, eoa()),
+            (k2, eoa()),
+            (k3, eoa()),
+            (k4, eoa()),
+        ]);
+        let depth = resolve_base(A, &g).compromise_depth.unwrap();
+        let w = witness(Node::base(A), depth, &g).unwrap();
+        assert_eq!(w, vec![Node::base(k1), Node::base(k2)]);
+        assert_eq!(
+            witness(Node::base(A), 1, &g),
+            None,
+            "no single key takes it"
+        );
+        assert_eq!(distinct_keys(Node::base(A), &g).unwrap().len(), 4);
     }
 
     /// Running out of depth on the alias itself leaves the alias as the answer, and says so.

@@ -5,6 +5,7 @@
 //! nothing and cost a second build target. `record` and `verify` are developer tools that ride
 //! along because they have to run exactly the pipeline the deployment runs.
 
+mod audit;
 mod check;
 mod history;
 mod inspect;
@@ -184,6 +185,25 @@ enum Command {
         /// sightings for windows read before sightings were kept.
         #[arg(long)]
         restart: bool,
+    },
+    /// Put a stratified random sample of published key counts to an anvil fork of Base at each
+    /// row's own block: act as the keys the count names, then as each set one key short, then
+    /// as a stranger. Writes the verdicts as JSON. Reads the database and the chain; writes
+    /// nothing to the database.
+    Oracle {
+        #[command(flatten)]
+        endpoints: Endpoints,
+        /// Rows drawn from each stratum (upgrade path by root kind).
+        #[arg(long, default_value_t = 12)]
+        per_stratum: usize,
+        #[arg(long, default_value_t = 20261017)]
+        seed: u64,
+        #[arg(long, default_value = "anvil")]
+        anvil: String,
+        #[arg(long, default_value_t = 8547)]
+        port: u16,
+        #[arg(long, default_value = "oracle.json")]
+        out: PathBuf,
     },
     /// Run the pipeline for one address at a pinned block and save every answer the chain gave
     /// as a replayable fixture. Prints what Hermes concluded, which is never the expectation:
@@ -818,6 +838,24 @@ async fn run(db: &str, command: Command) -> anyhow::Result<()> {
             endpoints,
         } => record(address, &name, (block, l1_block), &out_dir, &endpoints).await,
         Command::Pin { endpoints, limit } => pin(db, &endpoints, limit).await,
+        Command::Oracle {
+            endpoints,
+            per_stratum,
+            seed,
+            anvil,
+            port,
+            out,
+        } => {
+            let plan = audit::OraclePlan {
+                fork_url: &endpoints.rpc_url,
+                anvil: &anvil,
+                port,
+                per_stratum,
+                seed,
+                out: &out,
+            };
+            audit::oracle(&open(db).await?, plan).await
+        }
         Command::Diff { .. } | Command::Check { .. } | Command::Verify { .. } => {
             unreachable!("dispatched by main, which owns their exit codes")
         }
@@ -877,6 +915,7 @@ async fn run_offline(store: &Store, db: &str, command: Command) -> anyhow::Resul
         | Command::Discover { .. }
         | Command::Record { .. }
         | Command::Verify { .. }
+        | Command::Oracle { .. }
         | Command::Pin { .. } => unreachable!("dispatched before the database-only commands"),
     }
 }

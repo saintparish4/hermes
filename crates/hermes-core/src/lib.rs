@@ -1,5 +1,6 @@
 pub mod audit;
 pub mod authority;
+pub mod backtest;
 pub mod blast;
 pub mod canary;
 pub mod chain;

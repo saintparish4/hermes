@@ -205,3 +205,265 @@ fn print_summary(frame: &BTreeMap<String, u64>, verdicts: &[(String, Verdict)]) 
         ),
     }
 }
+
+pub struct BacktestPlan<'a> {
+    pub endpoints: &'a crate::Endpoints,
+    pub logs_url: &'a str,
+    /// Upgrades to judge, not counting deployments skipped on the way.
+    pub limit: usize,
+    pub seed: u64,
+    pub out: &'a Path,
+}
+
+/// One past upgrade, judged against what Hermes would have said the block before.
+#[derive(Serialize)]
+struct Judged {
+    address: Address,
+    /// `proxy` or `beacon`.
+    subject: &'static str,
+    block: u64,
+    transaction: alloy::primitives::B256,
+    judgement: hermes_core::backtest::Judgement,
+    observed: hermes_core::backtest::Observed,
+    /// The root and key count Hermes reads at `block - 1`.
+    root: Option<Node>,
+    keys_required: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct BacktestReport {
+    model_version: i64,
+    seed: u64,
+    /// Upgrade sightings in the index's scope, before deployments were set aside.
+    candidates: usize,
+    deployments_skipped: usize,
+    unreadable: usize,
+    judged: Vec<Judged>,
+}
+
+/// Upgrade sightings of indexed proxies and of the beacons they read, in a seeded order, and
+/// the indexed proxies by lowercased address.
+async fn upgrade_candidates(
+    store: &Store,
+    seed: u64,
+) -> anyhow::Result<(Vec<(String, i64)>, std::collections::HashSet<String>)> {
+    let rows = store.upgrade_entries().await?;
+    let proxies: std::collections::HashSet<String> =
+        rows.iter().map(|(r, _)| r.address.to_lowercase()).collect();
+    let beacons: std::collections::HashSet<String> = rows
+        .iter()
+        .filter_map(|(r, _)| r.beacon.as_ref().map(|b| b.to_lowercase()))
+        .collect();
+    let candidates: Vec<(String, i64)> = store
+        .upgrade_sightings()
+        .await?
+        .into_iter()
+        .filter(|(a, _)| {
+            let a = a.to_lowercase();
+            proxies.contains(&a) || beacons.contains(&a)
+        })
+        .collect();
+    let one_stratum = vec![String::new(); candidates.len()];
+    let order = stratified(&one_stratum, candidates.len(), seed)
+        .into_values()
+        .next()
+        .unwrap_or_default();
+    Ok((
+        order.into_iter().map(|i| candidates[i].clone()).collect(),
+        proxies,
+    ))
+}
+
+/// What Hermes reads about `address` at `block`: the walk's start and the probes under it.
+async fn read_before(
+    endpoints: &crate::Endpoints,
+    address: Address,
+    block: u64,
+    is_proxy: bool,
+) -> anyhow::Result<Option<(&'static str, Option<Node>, HashMap<Node, AuthorityProbe>)>> {
+    let checked = hermes_scan::verify::Checked {
+        on: String::new(),
+        base_block: block,
+        ethereum_block: None,
+        how: String::new(),
+        urls: Vec::new(),
+    };
+    let (scanner, authorities) = endpoints.at_blocks(&checked).await?;
+    if !is_proxy {
+        let node = Node::base(address);
+        return Ok(Some((
+            "beacon",
+            Some(node),
+            authorities.collect(vec![node]).await,
+        )));
+    }
+    let target = hermes_scan::Target {
+        address,
+        label: None,
+    };
+    let scanned = hermes_scan::scan_and_resolve(&scanner, &authorities, &[target], 0).await;
+    Ok(scanned.records.first().map(|r| {
+        (
+            "proxy",
+            hermes_core::graph::entry_of(r),
+            scanned.probes.clone(),
+        )
+    }))
+}
+
+/// Judge sighted upgrades of indexed proxies and their beacons, newest model, at the block
+/// before each. Deployments (no code the block before) are set aside, not judged.
+pub async fn backtest(store: &Store, plan: BacktestPlan<'_>) -> anyhow::Result<()> {
+    use hermes_scan::backtest::Reader;
+    let (ordered, proxies) = upgrade_candidates(store, plan.seed).await?;
+    let pace = std::time::Duration::from_millis(plan.endpoints.call_interval_ms);
+    let reader = Reader::new(hermes_scan::connect(&plan.endpoints.rpc_url).await?, pace);
+    let logs = Reader::new(hermes_scan::connect(plan.logs_url).await?, pace);
+    let mut report = BacktestReport {
+        model_version: MODEL_VERSION,
+        seed: plan.seed,
+        candidates: ordered.len(),
+        deployments_skipped: 0,
+        unreadable: 0,
+        judged: Vec::new(),
+    };
+    for (address, block) in ordered {
+        if report.judged.len() >= plan.limit {
+            break;
+        }
+        let (Ok(address), Ok(block)) = (address.parse::<Address>(), u64::try_from(block)) else {
+            continue;
+        };
+        let is_proxy = proxies.contains(&format!("{address:#x}"));
+        judge_sighting(
+            (&reader, &logs),
+            plan.endpoints,
+            &mut report,
+            address,
+            block,
+            is_proxy,
+        )
+        .await?;
+    }
+    print_backtest(&report);
+    std::fs::write(plan.out, serde_json::to_string_pretty(&report)? + "\n")?;
+    eprintln!("wrote {}", plan.out.display());
+    Ok(())
+}
+
+/// Judge every transaction that emitted `Upgraded` from `address` in `block`.
+async fn judge_sighting(
+    (reader, logs): (
+        &hermes_scan::backtest::Reader,
+        &hermes_scan::backtest::Reader,
+    ),
+    endpoints: &crate::Endpoints,
+    report: &mut BacktestReport,
+    address: Address,
+    block: u64,
+    is_proxy: bool,
+) -> anyhow::Result<()> {
+    use hermes_core::backtest::{Judgement, judge};
+    let Ok(hashes) = logs.upgrade_transactions(address, block).await else {
+        report.unreadable += 1;
+        return Ok(());
+    };
+    match reader.had_code(address, block - 1).await {
+        Some(true) => {}
+        Some(false) => {
+            report.deployments_skipped += 1;
+            return Ok(());
+        }
+        None => {
+            report.unreadable += 1;
+            return Ok(());
+        }
+    }
+    let Some((subject, entry, probes)) =
+        read_before(endpoints, address, block - 1, is_proxy).await?
+    else {
+        report.unreadable += 1;
+        return Ok(());
+    };
+    let resolution = entry.map(|e| hermes_core::resolve(e, &probes));
+    let published = resolution.as_ref().filter(|r| r.unresolved().is_none());
+    for hash in hashes {
+        let threshold_of = |a: Address| probes.get(&Node::base(a)).and_then(|p| p.threshold);
+        let seen = match reader.transaction(hash).await {
+            Ok((tx, receipt)) => hermes_scan::backtest::observed(&tx, &receipt, &threshold_of),
+            Err(_) => None,
+        };
+        let Some(seen) = seen else {
+            report.unreadable += 1;
+            continue;
+        };
+        let judgement = match entry {
+            Some(e) => judge(e, &probes, resolution.as_ref(), &seen),
+            None => Judgement::Unresolved,
+        };
+        eprintln!("{address} at {block}: {judgement:?}");
+        report.judged.push(Judged {
+            address,
+            subject,
+            block,
+            transaction: hash,
+            judgement,
+            observed: seen,
+            root: published.map(|r| r.terminal),
+            keys_required: published.and_then(|r| r.compromise_depth),
+        });
+    }
+    Ok(())
+}
+
+fn print_backtest(report: &BacktestReport) {
+    use hermes_core::backtest::Judgement;
+    let mut tally: BTreeMap<String, u64> = BTreeMap::new();
+    let (mut consistent, mut contradicted) = (0, 0);
+    for j in &report.judged {
+        let label = match j.judgement {
+            Judgement::Unresolved => "unresolved".to_string(),
+            Judgement::Consistent(w) => {
+                consistent += 1;
+                format!(
+                    "consistent: {}",
+                    serde_json::to_string(&w).unwrap_or_default()
+                )
+            }
+            Judgement::Contradicted(w) => {
+                contradicted += 1;
+                format!(
+                    "contradicted: {}",
+                    serde_json::to_string(&w).unwrap_or_default()
+                )
+            }
+            Judgement::Ambiguous(w) => {
+                format!(
+                    "ambiguous: {}",
+                    serde_json::to_string(&w).unwrap_or_default()
+                )
+            }
+        };
+        *tally.entry(label).or_default() += 1;
+    }
+    println!(
+        "{} upgrade sightings in scope; {} deployments set aside; {} unreadable; {} judged",
+        report.candidates,
+        report.deployments_skipped,
+        report.unreadable,
+        report.judged.len()
+    );
+    for (label, n) in &tally {
+        println!("  {label}: {n}");
+    }
+    let r = wilson(consistent, consistent + contradicted);
+    if let (Some(p), Some(lo), Some(hi)) = (r.estimate, r.low, r.high) {
+        println!(
+            "consistent among decided: {:.0}% [{:.0}%, {:.0}%] (95% Wilson, {} decided)",
+            p * 100.0,
+            lo * 100.0,
+            hi * 100.0,
+            consistent + contradicted
+        );
+    }
+}

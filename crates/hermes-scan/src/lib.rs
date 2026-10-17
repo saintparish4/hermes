@@ -1,3 +1,4 @@
+pub mod backtest;
 pub mod discover;
 pub mod oracle;
 pub mod pin;

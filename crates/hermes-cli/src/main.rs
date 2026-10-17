@@ -205,6 +205,25 @@ enum Command {
         #[arg(long, default_value = "oracle.json")]
         out: PathBuf,
     },
+    /// Judge sighted past upgrades of indexed proxies and beacons against what Hermes reads at
+    /// the block before each: was the transaction's actor inside the named authority? Reads
+    /// receipts and archive state; writes nothing to the database.
+    Backtest {
+        #[command(flatten)]
+        endpoints: Endpoints,
+        /// Upgrades to judge; deployments found on the way are set aside and not counted.
+        #[arg(long, default_value_t = 40)]
+        limit: usize,
+        /// Where to read one-block `eth_getLogs` from, when the main endpoint refuses logs (the
+        /// public Base endpoint has answered every `eth_getLogs` with `-32011` since at least
+        /// 2026-10-17). Defaults to `--rpc-url`.
+        #[arg(long)]
+        logs_rpc_url: Option<String>,
+        #[arg(long, default_value_t = 20261017)]
+        seed: u64,
+        #[arg(long, default_value = "backtest.json")]
+        out: PathBuf,
+    },
     /// Run the pipeline for one address at a pinned block and save every answer the chain gave
     /// as a replayable fixture. Prints what Hermes concluded, which is never the expectation:
     /// expectations in `tests/verified.json` are checked by hand.
@@ -856,6 +875,22 @@ async fn run(db: &str, command: Command) -> anyhow::Result<()> {
             };
             audit::oracle(&open(db).await?, plan).await
         }
+        Command::Backtest {
+            endpoints,
+            limit,
+            logs_rpc_url,
+            seed,
+            out,
+        } => {
+            let plan = audit::BacktestPlan {
+                logs_url: logs_rpc_url.as_deref().unwrap_or(&endpoints.rpc_url),
+                endpoints: &endpoints,
+                limit,
+                seed,
+                out: &out,
+            };
+            audit::backtest(&open(db).await?, plan).await
+        }
         Command::Diff { .. } | Command::Check { .. } | Command::Verify { .. } => {
             unreachable!("dispatched by main, which owns their exit codes")
         }
@@ -916,6 +951,7 @@ async fn run_offline(store: &Store, db: &str, command: Command) -> anyhow::Resul
         | Command::Record { .. }
         | Command::Verify { .. }
         | Command::Oracle { .. }
+        | Command::Backtest { .. }
         | Command::Pin { .. } => unreachable!("dispatched before the database-only commands"),
     }
 }

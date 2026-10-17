@@ -445,6 +445,17 @@ impl Store {
         Ok(written)
     }
 
+    /// Every `Upgraded` log discovery saw, as (address, block): proxies setting an
+    /// implementation and beacons upgrading, deployments included, oldest first.
+    pub async fn upgrade_sightings(&self) -> anyhow::Result<Vec<(String, i64)>> {
+        Ok(sqlx::query_as(
+            "SELECT address, first_block FROM sighting \
+             WHERE family LIKE 'impl:%' AND first_block IS NOT NULL ORDER BY first_block, address",
+        )
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     /// How many distinct proxies discovery has seen in `family`: a floor, since discovery reads
     /// windows of history rather than all of it.
     pub async fn family_size(&self, family: &str) -> anyhow::Result<i64> {
@@ -1718,6 +1729,29 @@ mod tests {
         assert_eq!(s.family_size("beacon:0xc").await.unwrap(), 0);
         let c = s.coverage().await.unwrap();
         assert_eq!((c.proxies_sighted, c.families_sighted), (5, 1));
+    }
+
+    /// The backtest reads only `Upgraded` sightings: a beacon or admin being set is a different
+    /// event, with a different actor.
+    #[tokio::test]
+    async fn only_upgraded_sightings_with_a_block_are_upgrades() {
+        let s = mem().await;
+        let row = |family: &str, address: &str, block: Option<i64>| {
+            (family.to_string(), address.to_string(), block)
+        };
+        s.add_sightings(&[
+            row("impl:0x1", "0xB", Some(20)),
+            row("impl:0x2", "0xA", Some(10)),
+            row("beacon:0x3", "0xC", Some(5)),
+            row("admin:0x4", "0xD", Some(6)),
+            row("impl:0x5", "0xE", None),
+        ])
+        .await
+        .unwrap();
+        assert_eq!(
+            s.upgrade_sightings().await.unwrap(),
+            vec![("0xA".to_string(), 10), ("0xB".to_string(), 20)]
+        );
     }
 
     #[tokio::test]

@@ -312,6 +312,10 @@ pub enum Undriveable {
     /// Re-installing the current implementation went through without the contract announcing
     /// an upgrade, so the fork shows no upgrade to judge.
     ReinstallUnobserved,
+    /// A contradiction that a second fork, reading the chain afresh, did not repeat. The public
+    /// endpoint returns empty storage under load, and a fork reading through it refuses honest
+    /// upgrades; a refusal is believed only when it is read twice.
+    Unstable,
 }
 
 impl Undriveable {
@@ -331,6 +335,7 @@ impl Undriveable {
             Self::ReplayDiffers => "replay_differs",
             Self::UpgradeFunctionUnknown => "upgrade_function_unknown",
             Self::ReinstallUnobserved => "reinstall_unobserved",
+            Self::Unstable => "unstable",
         }
     }
 }
@@ -988,6 +993,19 @@ fn finish(mut verdict: Verdict) -> Verdict {
     verdict
 }
 
+/// A contradiction stands only when a second fork repeats it, the rule every empty read in
+/// Hermes already follows. Two forks that disagree leave the row undetermined.
+pub fn confirmed_contradiction(first: Verdict, second: &Verdict) -> Verdict {
+    if first.outcome != Outcome::Contradicted || second.outcome == Outcome::Contradicted {
+        return first;
+    }
+    Verdict {
+        outcome: Outcome::Undetermined,
+        undriveable: Some(Undriveable::Unstable),
+        ..first
+    }
+}
+
 /// A verdict for a row that could not be put to the fork at all.
 pub fn not_run(
     proxy: Address,
@@ -1427,6 +1445,40 @@ mod tests {
         code.push(0x14);
         code.push(0x00);
         assert!(dispatched_selectors(&code).contains(&sel));
+    }
+
+    /// Found on the first full run: a Safe-owned beacon refused on one fork and upgraded on the
+    /// next, same block, same keys.
+    #[tokio::test]
+    async fn a_contradiction_one_fork_does_not_repeat_is_undetermined() {
+        let refused = check(
+            &toy(3, false),
+            &safe_graph(2),
+            UpgradeEntry::UupsOwner(PROXY),
+            PROXY,
+            2,
+        )
+        .await;
+        let upgraded = check(
+            &toy(2, false),
+            &safe_graph(2),
+            UpgradeEntry::UupsOwner(PROXY),
+            PROXY,
+            2,
+        )
+        .await;
+        assert_eq!(refused.outcome, Outcome::Contradicted);
+        let v = confirmed_contradiction(refused.clone(), &upgraded);
+        assert_eq!(v.outcome, Outcome::Undetermined);
+        assert_eq!(v.undriveable, Some(Undriveable::Unstable));
+        assert_eq!(
+            confirmed_contradiction(refused.clone(), &refused).outcome,
+            Outcome::Contradicted
+        );
+        assert_eq!(
+            confirmed_contradiction(upgraded.clone(), &refused).outcome,
+            Outcome::Confirmed
+        );
     }
 
     #[tokio::test]

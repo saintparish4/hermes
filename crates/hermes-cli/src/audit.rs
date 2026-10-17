@@ -95,9 +95,17 @@ pub async fn oracle(store: &Store, plan: OraclePlan<'_>) -> anyhow::Result<()> {
     );
     for (block, rows) in by_block {
         let block_u64 = u64::try_from(block)?;
-        let anvil = Anvil::start(plan.anvil, plan.fork_url, block_u64, plan.port).await?;
+        let mut anvil = Anvil::start(plan.anvil, plan.fork_url, block_u64, plan.port).await?;
         for row in rows {
-            let verdict = judge(store, &anvil, &probes, row, block).await?;
+            let mut verdict = judge(store, &anvil, &probes, row, block).await?;
+            if verdict.outcome == Outcome::Contradicted {
+                // A fresh fork reads the chain afresh, so a refusal that came from a bad read
+                // of the endpoint is not read twice.
+                drop(anvil);
+                anvil = Anvil::start(plan.anvil, plan.fork_url, block_u64, plan.port).await?;
+                let again = judge(store, &anvil, &probes, row, block).await?;
+                verdict = oracle::confirmed_contradiction(verdict, &again);
+            }
             eprintln!(
                 "{} {:?}{}",
                 row.address,

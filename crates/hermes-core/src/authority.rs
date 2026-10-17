@@ -1877,6 +1877,195 @@ mod tests {
         assert_eq!(distinct_keys(Node::base(A), &g).unwrap().len(), 4);
     }
 
+    // The tests below were written for mutants `cargo mutants` left alive on 2026-10-17: each
+    // fails with the mutation named in its comment put back.
+
+    /// A Safe nested past the depth cap. The walk stops at the first Safe, so it is not
+    /// truncated; only the key count's own cap stops the recursion. (`depth + 1` and
+    /// `depth > MAX_DEPTH` in `keys_required` and `signer_keys`.)
+    fn nested_safes(levels: u8) -> HashMap<Node, AuthorityProbe> {
+        let mut entries: Vec<(Address, AuthorityProbe)> = (0..levels)
+            .map(|i| {
+                let here = Address::with_last_byte(0x50 + i);
+                let next = Address::with_last_byte(0x50 + i + 1);
+                (here, safe(1, &[next]))
+            })
+            .collect();
+        entries.push((Address::with_last_byte(0x50 + levels), eoa()));
+        graph(&entries)
+    }
+
+    #[test]
+    fn a_count_deeper_than_the_cap_is_unknown_and_lists_no_keys() {
+        let top = Node::base(Address::with_last_byte(0x50));
+        let shallow = nested_safes(3);
+        assert_eq!(resolve(top, &shallow).compromise_depth, Some(1));
+        assert!(distinct_keys(top, &shallow).is_some());
+        let at_the_cap = nested_safes(MAX_DEPTH as u8);
+        assert_eq!(
+            resolve(top, &at_the_cap).compromise_depth,
+            Some(1),
+            "a key at the cap counts"
+        );
+        assert!(distinct_keys(top, &at_the_cap).is_some());
+        let deep = nested_safes(MAX_DEPTH as u8 + 2);
+        assert_eq!(resolve(top, &deep).compromise_depth, None);
+        assert_eq!(distinct_keys(top, &deep), None);
+    }
+
+    /// The same through pending owners, which recurse on a branch of their own.
+    #[test]
+    fn a_pending_owner_chain_deeper_than_the_cap_has_no_count() {
+        let levels = MAX_DEPTH as u8 + 2;
+        let mut entries: Vec<(Address, AuthorityProbe)> = (0..levels)
+            .map(|i| {
+                let mut p = ownable(Address::with_last_byte(0xee));
+                p.pending_owner =
+                    Some(PendingOwner::Address(Address::with_last_byte(0x60 + i + 1)));
+                (Address::with_last_byte(0x60 + i), p)
+            })
+            .collect();
+        entries.push((Address::with_last_byte(0x60 + levels), eoa()));
+        let mut costly = safe(
+            2,
+            &[Address::with_last_byte(0xf1), Address::with_last_byte(0xf2)],
+        );
+        costly.owner = None;
+        entries.push((Address::with_last_byte(0xee), costly));
+        entries.push((Address::with_last_byte(0xf1), eoa()));
+        entries.push((Address::with_last_byte(0xf2), eoa()));
+        let r = resolve_base(Address::with_last_byte(0x60), &graph(&entries));
+        assert_eq!(r.compromise_depth, None, "{r:?}");
+    }
+
+    /// Four owned contracts and a key: the walk truncates, and the count must not be read off
+    /// the chain anyway. (`stop.truncated || stop.cycle` to `&&` in `resolve`.)
+    #[test]
+    fn a_truncated_walk_has_no_count_even_when_the_count_could_reach_a_key() {
+        let g = graph(&[
+            (A, ownable(B)),
+            (B, ownable(C)),
+            (C, ownable(D)),
+            (D, ownable(E)),
+            (E, eoa()),
+        ]);
+        let r = resolve_base(A, &g);
+        assert!(r.truncated);
+        assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.depth_gap(), Some(DepthGap::Truncated));
+    }
+
+    /// `getOwners()` alone is not a Safe. (`&&` to `||` in `classify`.)
+    #[test]
+    fn answering_get_owners_without_get_threshold_is_not_a_safe() {
+        let half = AuthorityProbe {
+            owners: Some(vec![B]),
+            owner: Some(C),
+            pending_owner: Some(PendingOwner::Nobody),
+            ..Default::default()
+        };
+        assert_eq!(authority_kind(Node::base(A), &half), AuthorityKind::Ownable);
+        let other_half = AuthorityProbe {
+            threshold: Some(1),
+            ..Default::default()
+        };
+        assert_eq!(
+            authority_kind(Node::base(A), &other_half),
+            AuthorityKind::Unknown
+        );
+    }
+
+    /// Listed holders whose own keys are unknown are not "no one holds a key". (The
+    /// `members.is_empty()` guard in `root_gap` made always true.)
+    #[test]
+    fn listed_role_holders_that_are_unread_are_not_no_known_key() {
+        let g = graph(&[(A, role_gated(Some(&[B])))]);
+        let r = resolve_base(A, &g);
+        assert_eq!(r.compromise_depth, None);
+        assert_ne!(r.depth_gap(), Some(DepthGap::NoKnownKey));
+    }
+
+    #[test]
+    fn choose_is_the_binomial_coefficient() {
+        assert_eq!(choose(5, 2), 10);
+        assert_eq!(choose(17, 11), 12_376);
+        assert_eq!(choose(6, 0), 1);
+    }
+
+    #[test]
+    fn next_combination_walks_every_pair_in_order_and_then_stops() {
+        let mut pick = vec![0, 1];
+        let mut seen = vec![pick.clone()];
+        while next_combination(&mut pick, 4) {
+            seen.push(pick.clone());
+        }
+        assert_eq!(
+            seen,
+            vec![
+                vec![0, 1],
+                vec![0, 2],
+                vec![0, 3],
+                vec![1, 2],
+                vec![1, 3],
+                vec![2, 3]
+            ]
+        );
+    }
+
+    /// The witness is found past the first combination, and impossible sizes have none. (The
+    /// guards in `witness`, and `!` deleted from its loop.)
+    #[test]
+    fn the_witness_search_reaches_past_the_first_set_and_refuses_impossible_sizes() {
+        let (k1, k2, k3) = (
+            Address::with_last_byte(0x31),
+            Address::with_last_byte(0x32),
+            Address::with_last_byte(0x33),
+        );
+        // Only {k2, k3} takes it: k1 sits on a branch that needs two more.
+        let g = graph(&[
+            (A, safe(1, &[B, C])),
+            (B, safe(2, &[k2, k3])),
+            (C, safe(3, &[k1, k2, k3])),
+            (k1, eoa()),
+            (k2, eoa()),
+            (k3, eoa()),
+        ]);
+        assert_eq!(
+            witness(Node::base(A), 2, &g),
+            Some(vec![Node::base(k2), Node::base(k3)])
+        );
+        assert_eq!(witness(Node::base(A), 0, &g), None);
+        let all = graph(&[(A, safe(2, &[k1, k2])), (k1, eoa()), (k2, eoa())]);
+        assert_eq!(
+            witness(Node::base(A), 2, &all),
+            Some(vec![Node::base(k1), Node::base(k2)]),
+            "a witness may need every key there is"
+        );
+        assert_eq!(
+            witness(Node::base(A), 4, &g),
+            None,
+            "more keys than there are"
+        );
+        let wide: Vec<Address> = (0x40..0x70).map(Address::with_last_byte).collect();
+        let mut entries = vec![(A, safe(24, &wide[..48]))];
+        entries.extend(wide.iter().map(|k| (*k, eoa())));
+        assert_eq!(
+            witness(Node::base(A), 24, &graph(&entries)),
+            None,
+            "search too large"
+        );
+    }
+
+    /// A passkey has no address to act as, so the keys cannot be listed. (`> 0` to `< 0` in
+    /// `distinct_keys`.)
+    #[test]
+    fn keys_under_a_passkey_cannot_be_listed() {
+        let g = graph(&[(A, account(&[B], 1)), (B, eoa())]);
+        assert_eq!(distinct_keys(Node::base(A), &g), None);
+        let g = graph(&[(A, account(&[B], 0)), (B, eoa())]);
+        assert_eq!(distinct_keys(Node::base(A), &g), Some(vec![Node::base(B)]));
+    }
+
     /// Running out of depth on the alias itself leaves the alias as the answer, and says so.
     #[test]
     fn a_walk_truncated_on_an_alias_names_the_alias_rather_than_calling_it_a_key() {

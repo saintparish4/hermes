@@ -656,6 +656,33 @@ mod tests {
         assert!(!Relation::Implementation.is_control());
     }
 
+    /// Stored strings, so a renamed one is a schema change and not a refactor. (`code_str`
+    /// returning a constant, left alive by `cargo mutants` on 2026-10-17.)
+    #[test]
+    fn code_kinds_are_stored_as_these_strings() {
+        assert_eq!(code_str(Code::Present), "present");
+        assert_eq!(code_str(Code::Absent), "absent");
+        assert_eq!(code_str(Code::L1Alias(A)), "l1_alias");
+        assert_eq!(code_str(Code::Delegated(A)), "delegated");
+    }
+
+    /// A direction is arithmetic on numeric fields only, even when another field's values happen
+    /// to parse. (`Field::is_numeric` returning true.)
+    #[test]
+    fn only_numeric_fields_have_a_direction() {
+        let owner = Change {
+            field: Field::Owner,
+            old: Some("1".into()),
+            new: Some("2".into()),
+        };
+        assert_eq!(owner.direction(), None);
+        let keys = Change {
+            field: Field::KeysRequired,
+            ..owner
+        };
+        assert_eq!(keys.direction(), Some("rose"));
+    }
+
     /// A probe stored before modules were read must not close the module edges a later one
     /// opened, and a read setup with none must.
     #[test]

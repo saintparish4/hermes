@@ -417,6 +417,83 @@ mod tests {
         );
     }
 
+    /// A chain of `levels` links of `make` ending at a key, for the depth cap in `falls`.
+    /// (`depth + 1` and `depth > MAX_DEPTH` in `falls_at` and `enough_fall`, written for the
+    /// mutants `cargo mutants` left alive on 2026-10-17.)
+    fn chain(
+        levels: u8,
+        make: impl Fn(Address) -> AuthorityProbe,
+    ) -> HashMap<Node, AuthorityProbe> {
+        let mut entries: Vec<(Address, AuthorityProbe)> = (0..levels)
+            .map(|i| {
+                (
+                    Address::with_last_byte(0x50 + i),
+                    make(Address::with_last_byte(0x51 + i)),
+                )
+            })
+            .collect();
+        entries.push((Address::with_last_byte(0x50 + levels), key()));
+        graph(&entries)
+    }
+
+    #[test]
+    fn falls_cannot_tell_past_the_depth_cap_by_any_kind_of_link() {
+        let top = Node::base(Address::with_last_byte(0x50));
+        let pending_to = |next: Address| {
+            let mut p = owned_by(Address::with_last_byte(0xee));
+            p.pending_owner = Some(PendingOwner::Address(next));
+            p
+        };
+        let timelock = |next: Address| AuthorityProbe {
+            min_delay: Some(60),
+            owner: Some(next),
+            ..Default::default()
+        };
+        let makers: [(&str, Box<dyn Fn(Address) -> AuthorityProbe>); 4] = [
+            ("owner", Box::new(owned_by)),
+            ("safe owner", Box::new(|next| safe(1, &[next]))),
+            ("pending owner", Box::new(pending_to)),
+            ("timelock owner", Box::new(timelock)),
+        ];
+        for (what, make) in makers {
+            let shallow = chain(2, &make);
+            let held = Node::base(Address::with_last_byte(0x52));
+            let mut g = shallow.clone();
+            g.entry(Node::base(Address::with_last_byte(0xee)))
+                .or_insert_with(key);
+            assert_eq!(
+                falls(top, &HashSet::from([held]), &g),
+                Some(true),
+                "{what}, shallow"
+            );
+            let levels = MAX_DEPTH as u8 + 2;
+            let mut g = chain(levels, &make);
+            g.entry(Node::base(Address::with_last_byte(0xee)))
+                .or_insert_with(key);
+            let bottom = Node::base(Address::with_last_byte(0x50 + levels));
+            assert_eq!(
+                falls(top, &HashSet::from([bottom]), &g),
+                None,
+                "{what}, deep"
+            );
+        }
+    }
+
+    /// (The `members.is_empty()` guard in `falls_at` made always true.)
+    #[test]
+    fn a_role_falls_to_a_compromised_holder() {
+        let gated = AuthorityProbe {
+            roles: Some(crate::authority::RoleGate {
+                members: Some(vec![B]),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let g = graph(&[(A, gated), (B, key()), (C, key())]);
+        assert_eq!(falls(Node::base(A), &base(&[B]), &g), Some(true));
+        assert_eq!(falls(Node::base(A), &base(&[C]), &g), Some(false));
+    }
+
     #[test]
     fn a_safe_falls_at_its_threshold_and_not_one_key_before() {
         let g = graph(&[(A, safe(2, &[B, C, D])), (B, key()), (C, key()), (D, key())]);

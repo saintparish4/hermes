@@ -38,6 +38,16 @@ a finding about any contract.
   in several places under one root is counted once: when it does, the fewest distinct keys are
   searched for, and when that search would be too large the count is unknown
   (`shared_signers`) rather than an overstatement.
+- **Safe modules and guards are named, not followed.** A module executes through the Safe with
+  no signature, and what it requires is its own code, which Hermes does not read; a guard can
+  refuse what the owners sign. A Safe with either has no key count (`safe_modules`,
+  `safe_guard`), even where the module is well known and could not upgrade anything. A Safe
+  whose singleton is not one of Safe's canonical deployments (1.3.0 and 1.4.1, plain and L2) is
+  trusted no further than Medium, which includes Safes on any later version until it is added.
+  Module guards (Safe 1.5) are not read: they only restrict modules, which already leave the
+  count unknown.
+- **Pending owners are read through `pendingOwner()` only.** `Ownable2Step` and lookalikes are
+  covered; a pending admin under any other name is not seen.
 - **An unknown owner poisons a Safe's count**, even when the known owners alone would meet the
   threshold with single keys. This is deliberately conservative.
 - **Depth is capped at four links.** A deeper chain is reported as truncated, with no key count.

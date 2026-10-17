@@ -40,10 +40,30 @@ fn describe(t: &TreeNode) -> String {
         return "not read".into();
     };
     match kind {
-        "safe" => match (t.threshold, t.owner_count) {
-            (Some(m), Some(n)) => format!("Safe {m}-of-{n}"),
-            _ => "Safe".into(),
-        },
+        "safe" => {
+            let mut line = match (t.threshold, t.owner_count) {
+                (Some(m), Some(n)) => format!("Safe {m}-of-{n}"),
+                _ => "Safe".into(),
+            };
+            match t.modules.as_deref() {
+                None => line.push_str(", modules and guard not read"),
+                Some([]) => {}
+                Some(m) => {
+                    let _ = write!(
+                        line,
+                        ", {} module(s) that execute without signatures",
+                        m.len()
+                    );
+                }
+            }
+            if let Some(g) = t.guard {
+                let _ = write!(line, ", guard {}", g.to_checksum(None));
+            }
+            if t.canonical_singleton == Some(false) {
+                line.push_str(", not Safe's own code");
+            }
+            line
+        }
         "eoa" if t.code.as_deref() == Some("delegated") => "key (EIP-7702 delegated)".into(),
         "eoa" => "key".into(),
         "smart_account" => match t.passkeys {
@@ -82,6 +102,7 @@ fn relation(r: &str) -> &str {
         "uups_self" => "the proxy itself (UUPS)",
         "safe_owner" | "account_owner" => "signer",
         "role_member" => "role holder",
+        "pending_owner" => "pending owner (accepts alone)",
         "l1_alias" => "acts for",
         other => other,
     }

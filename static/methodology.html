@@ -57,9 +57,9 @@ slot are recorded and <em>not</em> counted as covered.</p>
 <tr><td>no code on Base, and none at its unaliased address on Ethereum</td><td>key</td><td>1</td></tr>
 <tr><td>an EIP-7702 delegation designator</td><td>key (delegated)</td><td>1: its private key signs whatever the delegate allows</td></tr>
 <tr><td>no code on Base, code at <code>address − 0x1111…1111</code> on Ethereum</td><td>L1 alias: the walk continues on Ethereum</td><td>those of the Ethereum contract</td></tr>
-<tr><td><code>getOwners()</code> and <code>getThreshold()</code></td><td>Safe</td><td>sum of the m cheapest owners</td></tr>
+<tr><td><code>getOwners()</code> and <code>getThreshold()</code></td><td>Safe: its modules, guard and singleton are read too</td><td>sum of the m cheapest owners, unless a module or guard stands beside them</td></tr>
 <tr><td><code>getMinDelay()</code></td><td>timelock: the delay is read</td><td>unknown: proposer and executor roles are not listed on chain</td></tr>
-<tr><td><code>owner()</code></td><td>owned contract: the walk continues to the owner</td><td>the owner's</td></tr>
+<tr><td><code>owner()</code></td><td>owned contract: the walk continues to the owner, and <code>pendingOwner()</code> is read</td><td>the owner's, or the pending owner's when that is cheaper</td></tr>
 <tr><td>OpenZeppelin <code>AccessControl</code></td><td>role-gated</td><td>the cheapest holder of the upgrade role or of its admin role, when listed</td></tr>
 <tr><td><code>entryPoint()</code></td><td>ERC-4337 smart account</td><td>its cheapest signer, when MultiOwnable; otherwise unknown</td></tr>
 <tr><td><code>0x…dEaD</code>, <code>0xff…ff</code>, precompiles</td><td>sentinel</td><td>none: no one holds these keys</td></tr>
@@ -70,13 +70,23 @@ Safe makes the whole count unknown, because the unknown one could be a single ke
 signs in two places under one root is counted once: summing each branch's cheapest keys would
 count it twice and overstate the margin, so the fewest distinct keys are searched for instead,
 and the count is unknown (<code>shared_signers</code>) when that search is too large.</p>
+<p>A threshold says how many owners must sign, not that signing is the only way in. An enabled
+Safe module executes with no signature at all, and what it requires is its own code, which
+Hermes does not read; a guard can refuse what the owners sign. Either leaves the count unknown
+(<code>safe_modules</code>, <code>safe_guard</code>), as does a Safe whose setup was not read
+(<code>safe_setup_unread</code>). A Safe whose singleton is not one Safe deployed is trusted no
+further than Medium. A pending owner (<code>Ownable2Step</code>) can accept control alone, so the
+count is the cheaper of the owner and the pending owner; an owned contract never asked is
+<code>pending_owner_unread</code>.</p>
 
 <h2>Unknown is an answer</h2>
 <p>A missing number is <code>null</code>, never zero. A covered proxy with no root says why:
 <code>unrecognized_interface</code>, <code>uups_unconfirmed</code>, <code>no_upgrade_path</code>
 or <code>rpc_undetermined</code>. A root with no key count says why too: <code>truncated</code>,
 <code>cycle</code>, <code>owners_unknown</code>, <code>roles_unread</code>,
-<code>account_keys_unread</code>, <code>no_known_key</code> or <code>shared_signers</code>. A call the node would not answer
+<code>account_keys_unread</code>, <code>no_known_key</code>, <code>shared_signers</code>,
+<code>safe_setup_unread</code>, <code>safe_modules</code>, <code>safe_guard</code> or
+<code>pending_owner_unread</code>. A call the node would not answer
 is a third outcome, distinct from a contract answering "no", and never becomes a verdict.
 Confidence only falls along a walk.</p>
 

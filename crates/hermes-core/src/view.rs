@@ -4,7 +4,10 @@
 //! path or what a key reaches. Every view carries its scope: the index is a sample, the graph is
 //! as of one observation, and "first seen" means first seen by Hermes.
 
-use crate::authority::{AuthorityKind, AuthorityProbe, MAX_DEPTH, authority_kind, successor};
+use crate::authority::{
+    AuthorityKind, AuthorityProbe, MAX_DEPTH, authority_kind, has_canonical_singleton, pending,
+    successor,
+};
 use crate::blast::{BlastRadius, blast_radius};
 use crate::chain::{Chain, Node};
 use crate::graph::{self, Field, MODEL_VERSION, Relation};
@@ -58,6 +61,11 @@ pub struct TreeNode {
     /// The upgrade role of an `AccessControl` contract, and whether its holders were listed.
     pub role: Option<alloy::primitives::B256>,
     pub members_listed: Option<bool>,
+    /// A Safe's enabled modules, `None` when they were not read (or this is not a Safe).
+    pub modules: Option<Vec<Address>>,
+    pub guard: Option<Address>,
+    /// Whether a Safe's singleton is one of Safe's own. `None` when not a Safe or not read.
+    pub canonical_singleton: Option<bool>,
     pub children: Vec<TreeNode>,
     /// Why the tree stops here when the node is not terminal: `not_read`, `cycle` or `depth`.
     pub stopped: Option<&'static str>,
@@ -89,6 +97,14 @@ fn grow(
     t.passkeys = probe.account_owners.as_ref().map(|o| o.passkeys);
     t.role = probe.roles.as_ref().map(|r| r.role);
     t.members_listed = probe.roles.as_ref().map(|r| r.members.is_some());
+    if kind == AuthorityKind::Safe {
+        t.modules = probe.safe_setup.as_ref().map(|s| s.modules.clone());
+        t.guard = probe.safe_setup.as_ref().and_then(|s| s.guard);
+        t.canonical_singleton = probe
+            .safe_setup
+            .as_ref()
+            .map(|_| has_canonical_singleton(probe));
+    }
     let signers = |list: Vec<Address>, r: Relation| -> Vec<(Node, &'static str)> {
         list.into_iter()
             .map(|address| {
@@ -126,6 +142,7 @@ fn grow(
         AuthorityKind::Ownable | AuthorityKind::Timelock => successor(node, probe)
             .map(|n| (n, Relation::Owner.as_str()))
             .into_iter()
+            .chain(pending(node, probe).map(|n| (n, Relation::PendingOwner.as_str())))
             .collect(),
         AuthorityKind::L1Alias => successor(node, probe)
             .map(|n| (n, Relation::L1Alias.as_str()))
@@ -173,6 +190,9 @@ fn grow_leaf(node: Node, relation: &str) -> TreeNode {
         passkeys: None,
         role: None,
         members_listed: None,
+        modules: None,
+        guard: None,
+        canonical_singleton: None,
         children: Vec::new(),
         stopped: None,
     }

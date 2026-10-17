@@ -9,7 +9,7 @@
 //!
 //! Pure: nothing here reads a chain or a database.
 
-use crate::authority::{AuthorityProbe, Code, Resolution, authority_kind, resolve};
+use crate::authority::{AuthorityProbe, Code, PendingOwner, Resolution, authority_kind, resolve};
 use crate::chain::Node;
 use crate::store::{ProxyRecord, checksum};
 use crate::upgrade::UpgradeEntry;
@@ -30,7 +30,12 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 ///    and sentinel addresses recognized; timelock roots say their roles are unread.
 /// 3. A key that signs under two branches is counted once: the fewest distinct keys, searched
 ///    for when summing per branch would overstate it (`shared_signers` when it cannot be).
-pub const MODEL_VERSION: i64 = 3;
+/// 4. A Safe's modules, guard and singleton are read, and an owned contract's pending owner. A
+///    module or a guard leaves the key count unknown (`safe_modules`, `safe_guard`), as does a
+///    Safe or owned contract stored before they were read; a pending owner is a second way in
+///    and the count is the cheaper of the two; a Safe whose singleton is not one of Safe's own
+///    is trusted no further than Medium.
+pub const MODEL_VERSION: i64 = 4;
 
 /// How one address stands to another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -53,10 +58,16 @@ pub enum Relation {
     AccountOwner,
     /// One holder of an `AccessControl` contract's upgrade role.
     RoleMember,
+    /// One enabled module of a Safe.
+    SafeModule,
+    /// A Safe's transaction guard.
+    SafeGuard,
+    /// What `pendingOwner()` answered.
+    PendingOwner,
 }
 
 impl Relation {
-    pub const ALL: [Relation; 8] = [
+    pub const ALL: [Relation; 11] = [
         Self::Implementation,
         Self::Admin,
         Self::Beacon,
@@ -65,6 +76,9 @@ impl Relation {
         Self::L1Alias,
         Self::AccountOwner,
         Self::RoleMember,
+        Self::SafeModule,
+        Self::SafeGuard,
+        Self::PendingOwner,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -77,6 +91,9 @@ impl Relation {
             Self::L1Alias => "l1_alias",
             Self::AccountOwner => "account_owner",
             Self::RoleMember => "role_member",
+            Self::SafeModule => "safe_module",
+            Self::SafeGuard => "safe_guard",
+            Self::PendingOwner => "pending_owner",
         }
     }
 
@@ -87,11 +104,13 @@ impl Relation {
     /// Whether the target of this edge decides what the source does: its admin, its beacon, its
     /// owner, or the L1 contract behind it. A signer is deliberately not one, of a Safe, an
     /// account or a role. One signer of several takes part in control, and whether it *has*
-    /// control is a threshold question that only `blast::falls` answers.
+    /// control is a threshold question that only `blast::falls` answers. Nor is a module or a
+    /// guard: what a module may do, and what a guard refuses, is their own code, which I do not
+    /// read. A pending owner is one, because accepting is all it takes.
     pub fn is_control(self) -> bool {
         matches!(
             self,
-            Self::Admin | Self::Beacon | Self::Owner | Self::L1Alias
+            Self::Admin | Self::Beacon | Self::Owner | Self::L1Alias | Self::PendingOwner
         )
     }
 }
@@ -105,6 +124,9 @@ pub type EdgeSets = BTreeMap<Relation, BTreeSet<Node>>;
 
 /// The edges a settled probe shows. Every probe answers for all of its relations: a codeless
 /// address was not asked `owner()` because it cannot have one.
+///
+/// The Safe and pending-owner relations are the exception: a probe stored before they were read
+/// says nothing about them, so they are left out rather than claimed empty.
 pub fn probe_edges(node: Node, probe: &AuthorityProbe) -> EdgeSets {
     let on_same_chain = |address: &Address| Node {
         chain: node.chain,
@@ -114,7 +136,7 @@ pub fn probe_edges(node: Node, probe: &AuthorityProbe) -> EdgeSets {
         Code::L1Alias(l1) => BTreeSet::from([Node::ethereum(l1)]),
         Code::Present | Code::Absent | Code::Delegated(_) => BTreeSet::new(),
     };
-    EdgeSets::from([
+    let mut sets = EdgeSets::from([
         (
             Relation::Owner,
             probe.owner.iter().map(on_same_chain).collect(),
@@ -142,7 +164,25 @@ pub fn probe_edges(node: Node, probe: &AuthorityProbe) -> EdgeSets {
                 .map(on_same_chain)
                 .collect(),
         ),
-    ])
+    ]);
+    if let Some(setup) = &probe.safe_setup {
+        sets.insert(
+            Relation::SafeModule,
+            setup.modules.iter().map(on_same_chain).collect(),
+        );
+        sets.insert(
+            Relation::SafeGuard,
+            setup.guard.iter().map(on_same_chain).collect(),
+        );
+    }
+    if let Some(pending) = probe.pending_owner {
+        let to = match pending {
+            PendingOwner::Address(a) => BTreeSet::from([on_same_chain(&a)]),
+            PendingOwner::Nobody => BTreeSet::new(),
+        };
+        sets.insert(Relation::PendingOwner, to);
+    }
+    sets
 }
 
 /// The slot edges of a proxy row, or `None` when the row carries an address I cannot parse.
@@ -190,10 +230,14 @@ pub enum Field {
     AccountOwnerRemoved,
     RoleMemberAdded,
     RoleMemberRemoved,
+    SafeModuleAdded,
+    SafeModuleRemoved,
+    SafeGuard,
+    PendingOwner,
 }
 
 impl Field {
-    pub const ALL: [Field; 18] = [
+    pub const ALL: [Field; 22] = [
         Self::Implementation,
         Self::Admin,
         Self::Beacon,
@@ -212,6 +256,10 @@ impl Field {
         Self::AccountOwnerRemoved,
         Self::RoleMemberAdded,
         Self::RoleMemberRemoved,
+        Self::SafeModuleAdded,
+        Self::SafeModuleRemoved,
+        Self::SafeGuard,
+        Self::PendingOwner,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -234,6 +282,10 @@ impl Field {
             Self::AccountOwnerRemoved => "account_owner_removed",
             Self::RoleMemberAdded => "role_member_added",
             Self::RoleMemberRemoved => "role_member_removed",
+            Self::SafeModuleAdded => "safe_module_added",
+            Self::SafeModuleRemoved => "safe_module_removed",
+            Self::SafeGuard => "safe_guard",
+            Self::PendingOwner => "pending_owner",
         }
     }
 
@@ -516,6 +568,29 @@ pub fn probe_changes(node: Node, old: &AuthorityProbe, new: &AuthorityProbe) -> 
         set(old.roles.as_ref().and_then(|r| r.members.as_ref())),
         set(new.roles.as_ref().and_then(|r| r.members.as_ref())),
     );
+    // Compared only when both probes read them: a Safe first asked about its modules has not
+    // gained one, Hermes has found out.
+    if let (Some(before), Some(after)) = (&old.safe_setup, &new.safe_setup) {
+        membership(
+            &mut out,
+            (Field::SafeModuleAdded, Field::SafeModuleRemoved),
+            before.modules.iter().copied().collect(),
+            after.modules.iter().copied().collect(),
+        );
+        push(
+            &mut out,
+            Field::SafeGuard,
+            before.guard.map(checksum),
+            after.guard.map(checksum),
+        );
+    }
+    if let (Some(before), Some(after)) = (old.pending_owner, new.pending_owner) {
+        let named = |p: PendingOwner| match p {
+            PendingOwner::Address(a) => Some(checksum(a)),
+            PendingOwner::Nobody => None,
+        };
+        push(&mut out, Field::PendingOwner, named(before), named(after));
+    }
     out
 }
 
@@ -532,6 +607,10 @@ mod tests {
         AuthorityProbe {
             owners: Some(owners.to_vec()),
             threshold: Some(threshold),
+            safe_setup: Some(crate::authority::SafeSetup {
+                singleton: Some(crate::authority::CANONICAL_SAFE_SINGLETONS[0]),
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }
@@ -565,13 +644,63 @@ mod tests {
     /// A Safe owner takes part in control without having it, so it must never be walked as a
     /// control edge; the implementation decides nothing about who upgrades.
     #[test]
-    fn only_admin_beacon_owner_and_alias_edges_are_control() {
+    fn only_admin_beacon_owner_alias_and_pending_owner_edges_are_control() {
         assert!(Relation::Admin.is_control());
         assert!(Relation::Beacon.is_control());
         assert!(Relation::Owner.is_control());
         assert!(Relation::L1Alias.is_control());
+        assert!(Relation::PendingOwner.is_control());
         assert!(!Relation::SafeOwner.is_control());
+        assert!(!Relation::SafeModule.is_control());
+        assert!(!Relation::SafeGuard.is_control());
         assert!(!Relation::Implementation.is_control());
+    }
+
+    /// A probe stored before modules were read must not close the module edges a later one
+    /// opened, and a read setup with none must.
+    #[test]
+    fn module_and_pending_edges_are_claimed_only_when_they_were_read() {
+        let mut unread = safe(1, &[B]);
+        unread.safe_setup = None;
+        let sets = probe_edges(Node::base(A), &unread);
+        assert!(!sets.contains_key(&Relation::SafeModule));
+        assert!(!sets.contains_key(&Relation::PendingOwner));
+
+        let mut read = safe(1, &[B]);
+        read.safe_setup.as_mut().unwrap().modules = vec![C];
+        read.pending_owner = Some(PendingOwner::Nobody);
+        let sets = probe_edges(Node::base(A), &read);
+        assert_eq!(sets[&Relation::SafeModule], BTreeSet::from([Node::base(C)]));
+        assert!(sets[&Relation::SafeGuard].is_empty());
+        assert!(sets[&Relation::PendingOwner].is_empty());
+    }
+
+    #[test]
+    fn a_module_enabled_between_two_reads_is_a_change_and_a_first_read_is_not() {
+        let mut never = safe(1, &[B]);
+        never.safe_setup = None;
+        let mut with_module = safe(1, &[B]);
+        with_module.safe_setup.as_mut().unwrap().modules = vec![C];
+        assert!(probe_changes(Node::base(A), &never, &with_module).is_empty());
+        let changes = probe_changes(Node::base(A), &safe(1, &[B]), &with_module);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].field, Field::SafeModuleAdded);
+        assert_eq!(changes[0].new, Some(checksum(C)));
+    }
+
+    #[test]
+    fn a_pending_owner_appearing_is_a_change() {
+        let mut before = AuthorityProbe {
+            owner: Some(B),
+            pending_owner: Some(PendingOwner::Nobody),
+            ..Default::default()
+        };
+        let mut after = before.clone();
+        after.pending_owner = Some(PendingOwner::Address(C));
+        let changes = probe_changes(Node::base(A), &before, &after);
+        assert_eq!(changes[0].field, Field::PendingOwner);
+        before.pending_owner = None;
+        assert!(probe_changes(Node::base(A), &before, &after).is_empty());
     }
 
     /// Every relation a probe answers for is present, empty or not: an empty set is what closes

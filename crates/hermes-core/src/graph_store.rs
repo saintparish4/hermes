@@ -805,6 +805,7 @@ mod tests {
     fn owned_by(owner: Address) -> AuthorityProbe {
         AuthorityProbe {
             owner: Some(owner),
+            pending_owner: Some(crate::authority::PendingOwner::Nobody),
             ..Default::default()
         }
     }
@@ -813,6 +814,10 @@ mod tests {
         AuthorityProbe {
             owners: Some(owners.to_vec()),
             threshold: Some(threshold),
+            safe_setup: Some(crate::authority::SafeSetup {
+                singleton: Some(crate::authority::CANONICAL_SAFE_SINGLETONS[0]),
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }

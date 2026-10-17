@@ -5,7 +5,7 @@
     "base": 51526000,
     "ethereum": 26013200
   },
-  "recorded_at": 1789845196,
+  "recorded_at": 1792257999,
   "reads": {
     "base": {
       "storage": {
@@ -38,6 +38,9 @@
             "ok": "0x000000000000000000000000b045571f321dff9de46ecc204d128aa68be47adb"
           },
           "0xa0e67e2b": {
+            "ok": "0x"
+          },
+          "0xe30c3978": {
             "ok": "0x"
           },
           "0xe75235b8": {

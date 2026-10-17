@@ -189,8 +189,11 @@ times. `/coverage` reports the cap and how many proxies and families discovery h
 Walks stop at four links and on cycles. `null` is never zero: a covered proxy with no root says
 why (`unrecognized_interface`, `uups_unconfirmed`, `no_upgrade_path`, `rpc_undetermined`), and so
 does a root with no key count (`truncated`, `cycle`, `owners_unknown`, `roles_unread`,
-`account_keys_unread`, `no_known_key`, `shared_signers`). A key that signs in two places under
-one root is counted once; the fewest distinct keys are searched for rather than summed. A node that will not answer is "undetermined", a third
+`account_keys_unread`, `no_known_key`, `shared_signers`, `safe_setup_unread`, `safe_modules`,
+`safe_guard`, `pending_owner_unread`). A key that signs in two places under
+one root is counted once; the fewest distinct keys are searched for rather than summed. A Safe
+module or guard leaves the count unknown, because signing is then not the only way in; a pending
+owner is a second way in, and the count is the cheaper of the two. A node that will not answer is "undetermined", a third
 outcome that never becomes "no". Confidence only falls along a walk.
 
 ### The graph and its history

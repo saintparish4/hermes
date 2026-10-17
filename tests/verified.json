@@ -20,7 +20,7 @@
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x4200..0018 (itself). owner() = 0x8cC5..6a6d, which has no code on Base; minus 0x1111..1111 it is 0x7bB4..595c, which has code on Ethereum and answers getThreshold()=2 over getOwners() = [0x9855..46a1 (3-of-6 Safe), 0x20Ac..A4Dd (8-of-11 Safe)]. All 17 inner owners have no code on Ethereum. Cheapest route: 3 + 8 = 11 keys.",
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x4200..0018 (itself). owner() = 0x8cC5..6a6d, which has no code on Base; minus 0x1111..1111 it is 0x7bB4..595c, which has code on Ethereum and answers getThreshold()=2 over getOwners() = [0x9855..46a1 (3-of-6 Safe), 0x20Ac..A4Dd (8-of-11 Safe)]. All 17 inner owners have no code on Ethereum. Cheapest route: 3 + 8 = 11 keys. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0x4200..0018: pendingOwner() reverts or returns nothing; Safe 0x20ac..a4dd on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.4.1; Safe 0x7bb4..595c on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.3.0; Safe 0x9855..46a1 on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.3.0.",
       "urls": [
         "https://basescan.org/address/0x4200000000000000000000000000000000000018#readContract",
         "https://app.safe.global/settings/setup?safe=eth:0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c",
@@ -50,7 +50,7 @@
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Implementation slot set, admin slot = ProxyAdmin 0x4200..0018; from there the same walk as the proxy-admin row: alias 0x8cC5..6a6d -> 2-of-2 Safe 0x7bB4..595c on Ethereum over a 3-of-6 and an 8-of-11 Safe of EOAs.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot set, admin slot = ProxyAdmin 0x4200..0018; from there the same walk as the proxy-admin row: alias 0x8cC5..6a6d -> 2-of-2 Safe 0x7bB4..595c on Ethereum over a 3-of-6 and an 8-of-11 Safe of EOAs. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0x4200..0018: pendingOwner() reverts or returns nothing; Safe 0x20ac..a4dd on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.4.1; Safe 0x7bb4..595c on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.3.0; Safe 0x9855..46a1 on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.3.0.",
       "urls": [
         "https://basescan.org/address/0x4200000000000000000000000000000000000010",
         "https://etherscan.io/address/0x7bB41C3008B3f03FE483B28b8DB90e19Cf07595c"
@@ -78,7 +78,7 @@
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Implementation slot zero, admin slot = 0x4200..0018, so whoever controls the ProxyAdmin can point it anywhere. Same root as the proxy-admin row.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot zero, admin slot = 0x4200..0018, so whoever controls the ProxyAdmin can point it anywhere. Same root as the proxy-admin row. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0x4200..0018: pendingOwner() reverts or returns nothing; Safe 0x20ac..a4dd on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.4.1; Safe 0x7bb4..595c on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.3.0; Safe 0x9855..46a1 on ethereum: getModulesPaginated lists none, guard slot zero, singleton 1.3.0.",
       "urls": [
         "https://basescan.org/address/0x4200000000000000000000000000000000000001"
       ]
@@ -105,7 +105,7 @@
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0xd94E..f94f, a Safe answering getThreshold()=3 over 6 owners; every owner has no code on Base and none at its unaliased address on Ethereum. Five of the six signers also sit on the 3-of-6 Safe 0x9855..46a1 behind the predeploys.",
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0xd94E..f94f, a Safe answering getThreshold()=3 over 6 owners; every owner has no code on Base and none at its unaliased address on Ethereum. Five of the six signers also sit on the 3-of-6 Safe 0x9855..46a1 behind the predeploys. Model 4, re-checked 2026-10-17 at the same blocks with cast: Safe 0xd94e..f94f on base: getModulesPaginated lists none, guard slot zero, singleton 1.3.0 L2.",
       "urls": [
         "https://basescan.org/address/0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
         "https://app.safe.global/settings/setup?safe=base:0xd94E416cf2c7167608B2515B7e4102B41efff94f"
@@ -133,7 +133,7 @@
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x9CAA..755B, which answers owner() = 0x920F..7377 and reverts on the Safe and Timelock probes. 0x920F..7377 is a Safe, getThreshold()=3 over 5 owners, none with code on Base or at their unaliased Ethereum address.",
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x9CAA..755B, which answers owner() = 0x920F..7377 and reverts on the Safe and Timelock probes. 0x920F..7377 is a Safe, getThreshold()=3 over 5 owners, none with code on Base or at their unaliased Ethereum address. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0x9caa..755b: pendingOwner() reverts or returns nothing; Safe 0x920f..5377 on base: getModulesPaginated lists none, guard slot zero, singleton 1.3.0.",
       "urls": [
         "https://basescan.org/address/0x9CAAB947F1E02A192AFda15c9fCe8838a8d4755B#readContract",
         "https://app.safe.global/settings/setup?safe=base:0x920F6A03EaFc80C5C4119383AEE56CeCea115377"
@@ -244,7 +244,7 @@
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Implementation slot = 0x4d5B..8e84, admin and beacon slots zero. The implementation answers proxiableUUID() with the ERC-1967 implementation slot. Through the proxy, owner() = 0xb045..7adb, which has no code on Base; its unaliased address 0x9f34..69ca has no code on Ethereum. One key, but only Medium: answering owner() does not prove owner() is what _authorizeUpgrade checks. The same key is owner() of two more UUPS proxies in the index.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation slot = 0x4d5B..8e84, admin and beacon slots zero. The implementation answers proxiableUUID() with the ERC-1967 implementation slot. Through the proxy, owner() = 0xb045..7adb, which has no code on Base; its unaliased address 0x9f34..69ca has no code on Ethereum. One key, but only Medium: answering owner() does not prove owner() is what _authorizeUpgrade checks. The same key is owner() of two more UUPS proxies in the index. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0xffc8..b9e4: pendingOwner() reverts or returns nothing.",
       "urls": [
         "https://basescan.org/address/0xFFC8519CAd3a02DB4252DFcfC81F15A2BEFbb9E4#readProxyContract",
         "https://basescan.org/address/0xb045571F321dfF9DE46eCc204D128aa68BE47adb"
@@ -300,7 +300,7 @@
       "on": "2026-09-19",
       "base_block": 51526000,
       "ethereum_block": 26013200,
-      "how": "Raw JSON-RPC outside Hermes. Implementation and admin slots zero, beacon slot = 0x0000..b2dc (836 bytes of code). The beacon answers owner() = 0xc509..39aa and reverts on the Safe and Timelock probes. 0xc509..39aa is a Safe, getThreshold()=2 over 3 owners, none with code on Base or at their unaliased Ethereum address.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation and admin slots zero, beacon slot = 0x0000..b2dc (836 bytes of code). The beacon answers owner() = 0xc509..39aa and reverts on the Safe and Timelock probes. 0xc509..39aa is a Safe, getThreshold()=2 over 3 owners, none with code on Base or at their unaliased Ethereum address. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0x0000..b2dc: pendingOwner() reverts or returns nothing; Safe 0xc509..39aa on base: getModulesPaginated lists none, guard slot zero, singleton 1.3.0 L2.",
       "urls": [
         "https://basescan.org/address/0x000000005aE5f42270cDf0E41960840e7FB1b2dc#readContract",
         "https://app.safe.global/settings/setup?safe=base:0xc50932edd1c14272aa35324dfc45a19ec57839aa"
@@ -383,7 +383,7 @@
       "on": "2026-09-30",
       "base_block": 51927177,
       "ethereum_block": 26079703,
-      "how": "Raw JSON-RPC outside Hermes, found by bisecting owner() between the Sep 20 and Sep 29 scans. Beacon slot = 0xe68E..7706; implementation and admin slots zero. The beacon reverts getOwners/getThreshold/getMinDelay and answers owner() = 0x21eb..B5fc, which has no code on Base; unaliased (0x10da..a4eb) it has no code on Ethereum at 26,079,703 either. One key.",
+      "how": "Raw JSON-RPC outside Hermes, found by bisecting owner() between the Sep 20 and Sep 29 scans. Beacon slot = 0xe68E..7706; implementation and admin slots zero. The beacon reverts getOwners/getThreshold/getMinDelay and answers owner() = 0x21eb..B5fc, which has no code on Base; unaliased (0x10da..a4eb) it has no code on Ethereum at 26,079,703 either. One key. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0xe68e..7706: pendingOwner() reverts or returns nothing.",
       "urls": [
         "https://basescan.org/address/0x9Caa0e7277ce86A4644F2D10b72561080531b674",
         "https://basescan.org/address/0xe68ED13998fd48497EAA3b52e20823605D8d7706#readContract"
@@ -412,7 +412,7 @@
       "on": "2026-09-30",
       "base_block": 51927178,
       "ethereum_block": 26079703,
-      "how": "Raw JSON-RPC outside Hermes, one block later. Same beacon; owner() = 0x6454..Bf15, which has code, reverts owner()/getMinDelay and answers getThreshold() = 2 over five getOwners(). All five owners have no code on Base, and none of their unaliased addresses has code on Ethereum at 26,079,703. The previous owner, 0x21eb..B5fc, is one of the five. Two keys.",
+      "how": "Raw JSON-RPC outside Hermes, one block later. Same beacon; owner() = 0x6454..Bf15, which has code, reverts owner()/getMinDelay and answers getThreshold() = 2 over five getOwners(). All five owners have no code on Base, and none of their unaliased addresses has code on Ethereum at 26,079,703. The previous owner, 0x21eb..B5fc, is one of the five. Two keys. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0xe68e..7706: pendingOwner() reverts or returns nothing; Safe 0x6454..bf15 on base: getModulesPaginated lists none, guard slot zero, singleton 1.4.1 L2.",
       "urls": [
         "https://basescan.org/address/0x9Caa0e7277ce86A4644F2D10b72561080531b674",
         "https://basescan.org/address/0xe68ED13998fd48497EAA3b52e20823605D8d7706#readContract",
@@ -468,7 +468,7 @@
       "on": "2026-09-30",
       "base_block": 52003751,
       "ethereum_block": 26092419,
-      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x7cfd..3b85, which reverts getOwners/getThreshold/getMinDelay/entryPoint and answers owner() = 0x7fa6..d27c. That address's code is 0xef0100 || 0x63c0..e32b, an EIP-7702 designator: an EOA with delegated code, so one key. Before model 2 it answered entryPoint() and was reported unrecognized.",
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0x7cfd..3b85, which reverts getOwners/getThreshold/getMinDelay/entryPoint and answers owner() = 0x7fa6..d27c. That address's code is 0xef0100 || 0x63c0..e32b, an EIP-7702 designator: an EOA with delegated code, so one key. Before model 2 it answered entryPoint() and was reported unrecognized. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0x7cfd..3b85: pendingOwner() reverts or returns nothing.",
       "urls": [
         "https://basescan.org/address/0x034651d50c3Caf5cF91d646ad1a8092738cc7718",
         "https://basescan.org/address/0x7cfd2c84f2313f8cf46f69f0471344d469613b85#readContract",
@@ -497,7 +497,7 @@
       "on": "2026-09-30",
       "base_block": 52003751,
       "ethereum_block": 26092419,
-      "how": "Raw JSON-RPC outside Hermes. Implementation 0x6c85..d1e7 answers proxiableUUID() with the ERC-1967 slot; the proxy answers owner() = 0x2e93..e9aa. That account has 61 bytes of code, answers entryPoint() = 0x5FF1..2789 (EntryPoint v0.6) and nextOwnerIndex() = 2; ownerAtIndex(0) and (1) are 32-byte addresses 0x39a0..2bfa and 0xe6e9..8397, both without code on Base or at their unaliased address on Ethereum. MultiOwnable accepts any one owner, so one key; Medium for both the UUPS start and the account.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation 0x6c85..d1e7 answers proxiableUUID() with the ERC-1967 slot; the proxy answers owner() = 0x2e93..e9aa. That account has 61 bytes of code, answers entryPoint() = 0x5FF1..2789 (EntryPoint v0.6) and nextOwnerIndex() = 2; ownerAtIndex(0) and (1) are 32-byte addresses 0x39a0..2bfa and 0xe6e9..8397, both without code on Base or at their unaliased address on Ethereum. MultiOwnable accepts any one owner, so one key; Medium for both the UUPS start and the account. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0x38d4..6bd7: pendingOwner() reverts or returns nothing.",
       "urls": [
         "https://basescan.org/address/0x38d4479cB3AccFBb54877B4FD3484B5727cB6bd7",
         "https://basescan.org/address/0x2e93ebc3f93df6b4170d41d8cc700921cc2de9aa",
@@ -580,7 +580,7 @@
       "on": "2026-09-30",
       "base_block": 52003751,
       "ethereum_block": 26092419,
-      "how": "Raw JSON-RPC outside Hermes. Implementation 0x0c70..8412 answers proxiableUUID() with the ERC-1967 slot. The proxy answers owner() = 0xff..ff (and also entryPoint(), which the walk never reaches because owner() answered first). No one can hold the key to 0xff..ff; before model 2 this ranked as a one-key EOA.",
+      "how": "Raw JSON-RPC outside Hermes. Implementation 0x0c70..8412 answers proxiableUUID() with the ERC-1967 slot. The proxy answers owner() = 0xff..ff (and also entryPoint(), which the walk never reaches because owner() answered first). No one can hold the key to 0xff..ff; before model 2 this ranked as a one-key EOA. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0xf1cc..1d41: pendingOwner() reverts or returns nothing.",
       "urls": [
         "https://basescan.org/address/0xF1CC2116366131409f04eB25d8619Eca73171D41#readProxyContract"
       ]
@@ -607,7 +607,7 @@
       "on": "2026-09-30",
       "base_block": 52003751,
       "ethereum_block": 26092419,
-      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0xdf3f..78d0, which answers owner() = 0xf425..155a. That contract answers getMinDelay() = 0x3f480 = 259,200 s (72h), reverts owner/getOwners/getThreshold, answers supportsInterface(0x7965db0b) = true and reverts getRoleMemberCount(PROPOSER_ROLE): OpenZeppelin TimelockController, roles not enumerable.",
+      "how": "Raw JSON-RPC outside Hermes. Admin slot = 0xdf3f..78d0, which answers owner() = 0xf425..155a. That contract answers getMinDelay() = 0x3f480 = 259,200 s (72h), reverts owner/getOwners/getThreshold, answers supportsInterface(0x7965db0b) = true and reverts getRoleMemberCount(PROPOSER_ROLE): OpenZeppelin TimelockController, roles not enumerable. Model 4, re-checked 2026-10-17 at the same blocks with cast: 0xdf3f..78d0: pendingOwner() reverts or returns nothing.",
       "urls": [
         "https://basescan.org/address/0x291088312150482826b3A37d5A69a4c54DAa9118",
         "https://basescan.org/address/0xf425ed48483B49cF10C8a7f6cFd25dFD86d3155a#readContract"

@@ -5,7 +5,7 @@
     "base": 51927177,
     "ethereum": 26079703
   },
-  "recorded_at": 1790795328,
+  "recorded_at": 1792257932,
   "reads": {
     "base": {
       "storage": {
@@ -37,6 +37,9 @@
             "ok": "0x00000000000000000000000021ebc2f23a91fd7eb8406cdce2fd653de280b5fc"
           },
           "0xa0e67e2b": {
+            "revert": "server returned an error response: error code 3: execution reverted"
+          },
+          "0xe30c3978": {
             "revert": "server returned an error response: error code 3: execution reverted"
           },
           "0xe75235b8": {

@@ -67,6 +67,49 @@ pub struct RoleGate {
     pub members: Option<Vec<Address>>,
 }
 
+/// What a Safe allows besides its owners' signatures.
+///
+/// A threshold says how many owners must sign. It does not say that signing is the only way
+/// in: an enabled module makes the Safe execute anything with no signature at all, and a guard
+/// can refuse what the owners sign. Counting owners without reading these states a key count
+/// for a door I never looked at.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SafeSetup {
+    /// Every enabled module, read to the end of the list.
+    pub modules: Vec<Address>,
+    /// The transaction guard (`guard_manager.guard.address`), when one is set.
+    pub guard: Option<Address>,
+    /// What the Safe proxy delegates to (its storage slot 0). `None` when the slot did not
+    /// hold a clean address, which no Safe proxy writes.
+    pub singleton: Option<Address>,
+}
+
+/// The singletons Safe deployed at the same address on every chain, whose `getOwners()` and
+/// `getThreshold()` mean what Safe's code says they mean. Anything else answering the Safe
+/// interface is code I have not read, so it is trusted no further than Medium.
+///
+/// 1.3.0 and 1.3.0 L2 at their canonical and EIP-155 addresses, 1.4.1 and 1.4.1 L2.
+pub const CANONICAL_SAFE_SINGLETONS: [Address; 6] = [
+    address!("d9Db270c1B5E3Bd161E8c8503c55cEABeE709552"),
+    address!("3E5c63644E683549055b9Be8653de26E0B4CD36E"),
+    address!("69f4D1788e39c87893C980c06EdF4b7f686e2938"),
+    address!("fb1bffC9d739B8D520DaF37dF666da4C687191EA"),
+    address!("41675C099F32341bf84BFc5382aF534df5C7461a"),
+    address!("29fcB43b46531BcA003ddC8FCB67FFE91900C762"),
+];
+
+/// What `pendingOwner()` answered for an owned contract.
+///
+/// A pending owner can call `acceptOwnership()` whenever it likes and needs nobody's leave, so
+/// it is a second way to the same control, already half open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PendingOwner {
+    /// The contract answered, with no one pending (or it has no such function).
+    Nobody,
+    Address(Address),
+}
+
 /// What one address answered when probed for the interfaces I recognize.
 ///
 /// Serializable because the store keeps each one whole: it is the exact input the resolver
@@ -86,6 +129,12 @@ pub struct AuthorityProbe {
     pub account_owners: Option<AccountOwners>,
     /// Present when the contract is an OpenZeppelin `AccessControl`.
     pub roles: Option<RoleGate>,
+    /// A Safe's modules, guard and singleton. `None` when they were not read, which for a Safe
+    /// leaves its key count unknown.
+    pub safe_setup: Option<SafeSetup>,
+    /// An owned contract's `pendingOwner()`. `None` when it was not read, which leaves the key
+    /// count through it unknown.
+    pub pending_owner: Option<PendingOwner>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,6 +290,16 @@ pub enum DepthGap {
     /// distinct keys was too large to run (or ran into a passkey, which has no identity to
     /// share). Summing per branch would overstate the count, so there is none.
     SharedSigners,
+    /// A Safe under the root was never asked for its modules and guard, or would not list them.
+    SafeSetupUnread,
+    /// A Safe under the root has an enabled module, which executes with no signature. What the
+    /// module itself requires is its own code, which I do not read.
+    SafeModules,
+    /// A Safe under the root has a guard, which can refuse what its owners sign, so the owners
+    /// alone may not be enough.
+    SafeGuard,
+    /// An owned contract under the root was never asked for a pending owner.
+    PendingOwnerUnread,
 }
 
 impl DepthGap {
@@ -253,6 +312,10 @@ impl DepthGap {
             Self::AccountKeysUnread => "account_keys_unread",
             Self::NoKnownKey => "no_known_key",
             Self::SharedSigners => "shared_signers",
+            Self::SafeSetupUnread => "safe_setup_unread",
+            Self::SafeModules => "safe_modules",
+            Self::SafeGuard => "safe_guard",
+            Self::PendingOwnerUnread => "pending_owner_unread",
         }
     }
 }
@@ -361,7 +424,45 @@ pub fn edges(node: Node, probe: &AuthorityProbe) -> Vec<Node> {
         })
         .collect();
     out.extend(successor(node, probe));
+    out.extend(pending(node, probe));
     out
+}
+
+/// The pending owner of an owned contract, on the chain the contract lives on.
+pub fn pending(node: Node, probe: &AuthorityProbe) -> Option<Node> {
+    if classify(node, probe).0 != AuthorityKind::Ownable {
+        return None;
+    }
+    match probe.pending_owner? {
+        PendingOwner::Address(address) => Some(Node {
+            chain: node.chain,
+            address,
+        }),
+        PendingOwner::Nobody => None,
+    }
+}
+
+/// Why a Safe's owners alone cannot be said to decide it, or `None` when they can.
+pub fn safe_door(probe: &AuthorityProbe) -> Option<DepthGap> {
+    let Some(setup) = &probe.safe_setup else {
+        return Some(DepthGap::SafeSetupUnread);
+    };
+    if !setup.modules.is_empty() {
+        Some(DepthGap::SafeModules)
+    } else if setup.guard.is_some() {
+        Some(DepthGap::SafeGuard)
+    } else {
+        None
+    }
+}
+
+/// Whether a Safe's singleton is one whose code I know the interface answers for.
+pub fn has_canonical_singleton(probe: &AuthorityProbe) -> bool {
+    probe
+        .safe_setup
+        .as_ref()
+        .and_then(|s| s.singleton)
+        .is_some_and(|s| CANONICAL_SAFE_SINGLETONS.contains(&s))
 }
 
 /// Where a walk stopped and why.
@@ -409,6 +510,12 @@ fn walk(start: Node, probes: &HashMap<Node, AuthorityProbe>, path: &mut Vec<Node
         }
 
         match kind {
+            // The interface answering is all a Safe of unknown code proves, and the root rests
+            // on that answer.
+            AuthorityKind::Safe if !has_canonical_singleton(probe) => {
+                stop.confidence = stop.confidence.min(Confidence::Medium);
+                return stop;
+            }
             AuthorityKind::Eoa | AuthorityKind::Safe | AuthorityKind::Sentinel => return stop,
             // Answering `entryPoint()` proves what a contract is, not who may upgrade what it
             // controls, and a role taken to be the upgrade role is a convention. Either way the
@@ -426,6 +533,11 @@ fn walk(start: Node, probes: &HashMap<Node, AuthorityProbe>, path: &mut Vec<Node
                 // Proposer and executor are distinct role sets with different key
                 // requirements, and I model the timelock as one node. Anything concluded
                 // through it is an approximation, so it cannot stay High.
+                stop.confidence = stop.confidence.min(Confidence::Medium);
+            }
+            // `pendingOwner()` is a name, not a standard, so a root reached past one is no
+            // surer than the convention.
+            AuthorityKind::Ownable if pending(current, probe).is_some() => {
                 stop.confidence = stop.confidence.min(Confidence::Medium);
             }
             AuthorityKind::Ownable | AuthorityKind::L1Alias => {}
@@ -459,6 +571,7 @@ fn keys_required(
     let probe = probes.get(&node)?;
     let cost = match classify(node, probe).0 {
         AuthorityKind::Eoa => Some(1),
+        AuthorityKind::Safe if safe_door(probe).is_some() => None,
         AuthorityKind::Safe => {
             let threshold = probe.threshold? as usize;
             cheapest(
@@ -470,6 +583,18 @@ fn keys_required(
                 depth,
                 seen,
             )
+        }
+        AuthorityKind::Ownable => {
+            let through_owner = keys_required(successor(node, probe)?, probes, depth + 1, seen);
+            match probe.pending_owner {
+                None => None,
+                Some(PendingOwner::Nobody) => through_owner,
+                Some(PendingOwner::Address(_)) => {
+                    let through_pending =
+                        keys_required(pending(node, probe)?, probes, depth + 1, seen);
+                    Some(through_owner?.min(through_pending?))
+                }
+            }
         }
         AuthorityKind::SmartAccount => {
             let signers = probe.account_owners.as_ref()?;
@@ -487,7 +612,7 @@ fn keys_required(
             let members = probe.roles.as_ref()?.members.as_ref()?;
             cheapest(node, members, 0, 1, probes, depth, seen)
         }
-        AuthorityKind::Ownable | AuthorityKind::Timelock | AuthorityKind::L1Alias => {
+        AuthorityKind::Timelock | AuthorityKind::L1Alias => {
             keys_required(successor(node, probe)?, probes, depth + 1, seen)
         }
         AuthorityKind::Sentinel | AuthorityKind::Unknown => None,
@@ -572,7 +697,11 @@ fn signer_keys(
             .iter()
             .map(under)
             .collect(),
-        AuthorityKind::Ownable | AuthorityKind::Timelock | AuthorityKind::L1Alias => {
+        AuthorityKind::Ownable => successor(node, probe)
+            .into_iter()
+            .chain(pending(node, probe))
+            .collect(),
+        AuthorityKind::Timelock | AuthorityKind::L1Alias => {
             vec![successor(node, probe)?]
         }
         AuthorityKind::Sentinel | AuthorityKind::Unknown => return None,
@@ -643,7 +772,7 @@ fn fewest_distinct_keys(
     Ok(summed)
 }
 
-/// Advance `pick` to the next k-combination of `0..n` in lexicographic order.
+/// Advance `pick` to the next k-combination of `0..n` in lexicographic order./// Advance `pick` to the next k-combination of `0..n` in lexicographic order.
 fn next_combination(pick: &mut [usize], n: usize) -> bool {
     let k = pick.len();
     for i in (0..k).rev() {
@@ -678,6 +807,34 @@ fn root_gap(root: Node, probe: Option<&AuthorityProbe>) -> Option<DepthGap> {
     }
 }
 
+/// The first door under `node` that keeps its key count from being read: a Safe whose
+/// modules or guard stand beside its owners, or an owned contract whose pending owner was
+/// never read. Breadth-first over the same edges the count reads, so the nearest one names
+/// the gap.
+fn door_gap(node: Node, probes: &HashMap<Node, AuthorityProbe>) -> Option<DepthGap> {
+    let mut seen = HashSet::from([node]);
+    let mut frontier = vec![node];
+    for _ in 0..=MAX_DEPTH {
+        let mut next = Vec::new();
+        for n in &frontier {
+            let Some(probe) = probes.get(n) else { continue };
+            let gap = match classify(*n, probe).0 {
+                AuthorityKind::Safe => safe_door(probe),
+                AuthorityKind::Ownable if probe.pending_owner.is_none() => {
+                    Some(DepthGap::PendingOwnerUnread)
+                }
+                _ => None,
+            };
+            if gap.is_some() {
+                return gap;
+            }
+            next.extend(edges(*n, probe).into_iter().filter(|e| seen.insert(*e)));
+        }
+        frontier = next;
+    }
+    None
+}
+
 /// Resolve an admin to the authority that actually stands behind it.
 pub fn resolve(admin: Node, probes: &HashMap<Node, AuthorityProbe>) -> Resolution {
     let mut path = Vec::new();
@@ -707,7 +864,14 @@ pub fn resolve(admin: Node, probes: &HashMap<Node, AuthorityProbe>) -> Resolutio
         truncated: stop.truncated,
         cycle: stop.cycle,
         unanswered: stop.unanswered,
-        root_gap: shared.or_else(|| root_gap(terminal, probes.get(&terminal))),
+        root_gap: shared
+            .or_else(|| root_gap(terminal, probes.get(&terminal)))
+            .or_else(|| {
+                compromise_depth
+                    .is_none()
+                    .then(|| door_gap(admin, probes))
+                    .flatten()
+            }),
     }
 }
 
@@ -733,6 +897,7 @@ mod tests {
     fn ownable(owner: Address) -> AuthorityProbe {
         AuthorityProbe {
             owner: Some(owner),
+            pending_owner: Some(PendingOwner::Nobody),
             ..Default::default()
         }
     }
@@ -741,6 +906,10 @@ mod tests {
         AuthorityProbe {
             owners: Some(owners.to_vec()),
             threshold: Some(threshold),
+            safe_setup: Some(SafeSetup {
+                singleton: Some(CANONICAL_SAFE_SINGLETONS[0]),
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }
@@ -1487,6 +1656,157 @@ mod tests {
                 .min();
             assert_eq!(counted, brute, "{g:?}");
         }
+    }
+
+    fn with_setup(mut probe: AuthorityProbe, setup: Option<SafeSetup>) -> AuthorityProbe {
+        probe.safe_setup = setup;
+        probe
+    }
+
+    fn setup(modules: &[Address], guard: Option<Address>) -> Option<SafeSetup> {
+        Some(SafeSetup {
+            modules: modules.to_vec(),
+            guard,
+            singleton: Some(CANONICAL_SAFE_SINGLETONS[0]),
+        })
+    }
+
+    /// A module executes through the Safe with no owner signing, so two owners of a 2-of-3 are
+    /// not the fewest keys: whatever the module needs might be fewer.
+    #[test]
+    fn a_safe_with_a_module_has_no_key_count() {
+        let g = graph(&[
+            (A, with_setup(safe(2, &[B, C, D]), setup(&[E], None))),
+            (B, eoa()),
+            (C, eoa()),
+            (D, eoa()),
+        ]);
+        let r = resolve_base(A, &g);
+        assert_eq!(r.terminal, Node::base(A));
+        assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.depth_gap(), Some(DepthGap::SafeModules));
+    }
+
+    #[test]
+    fn a_guarded_safe_has_no_key_count() {
+        let g = graph(&[
+            (A, with_setup(safe(1, &[B]), setup(&[], Some(E)))),
+            (B, eoa()),
+        ]);
+        assert_eq!(resolve_base(A, &g).depth_gap(), Some(DepthGap::SafeGuard));
+    }
+
+    /// Every Safe stored before modules were read looks like this. It is not "no modules".
+    #[test]
+    fn a_safe_whose_setup_was_never_read_has_no_key_count() {
+        let g = graph(&[(A, with_setup(safe(1, &[B]), None)), (B, eoa())]);
+        let r = resolve_base(A, &g);
+        assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.depth_gap(), Some(DepthGap::SafeSetupUnread));
+    }
+
+    /// The gap is named even when the door is one Safe down, rather than falling back to
+    /// "an owner is unknown", which would be false.
+    #[test]
+    fn a_module_on_a_nested_safe_names_the_gap() {
+        let g = graph(&[
+            (A, ownable(B)),
+            (B, safe(2, &[C, D])),
+            (C, with_setup(safe(1, &[E]), setup(&[A], None))),
+            (D, eoa()),
+            (E, eoa()),
+        ]);
+        let r = resolve_base(A, &g);
+        assert_eq!(r.terminal, Node::base(B));
+        assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.depth_gap(), Some(DepthGap::SafeModules));
+    }
+
+    #[test]
+    fn a_safe_of_unknown_code_is_trusted_no_further_than_medium() {
+        let odd = Some(SafeSetup {
+            singleton: Some(E),
+            ..Default::default()
+        });
+        let g = graph(&[(A, with_setup(safe(1, &[B]), odd)), (B, eoa())]);
+        let r = resolve_base(A, &g);
+        assert_eq!(r.confidence, Confidence::Medium);
+        assert_eq!(
+            r.compromise_depth,
+            Some(1),
+            "the count stands; the trust does not"
+        );
+        let g = graph(&[(A, safe(1, &[B])), (B, eoa())]);
+        assert_eq!(resolve_base(A, &g).confidence, Confidence::High);
+    }
+
+    /// A pending owner takes control by accepting it, alone. A ProxyAdmin owned by a 3-of-3
+    /// with one key pending is one key away, not three.
+    #[test]
+    fn a_pending_owner_is_a_second_way_to_the_same_control() {
+        let mut admin = ownable(B);
+        admin.pending_owner = Some(PendingOwner::Address(E));
+        let g = graph(&[
+            (A, admin),
+            (B, safe(3, &[C, D, E])),
+            (C, eoa()),
+            (D, eoa()),
+            (E, eoa()),
+        ]);
+        let r = resolve_base(A, &g);
+        assert_eq!(r.terminal, Node::base(B), "the root is still the owner");
+        assert_eq!(r.compromise_depth, Some(1));
+        assert_eq!(r.confidence, Confidence::Medium);
+        assert!(edges(Node::base(A), &g[&Node::base(A)]).contains(&Node::base(E)));
+    }
+
+    #[test]
+    fn a_pending_owner_that_costs_more_than_the_owner_changes_nothing() {
+        let mut admin = ownable(B);
+        admin.pending_owner = Some(PendingOwner::Address(C));
+        let g = graph(&[
+            (A, admin),
+            (B, eoa()),
+            (C, safe(2, &[D, E])),
+            (D, eoa()),
+            (E, eoa()),
+        ]);
+        assert_eq!(resolve_base(A, &g).compromise_depth, Some(1));
+    }
+
+    #[test]
+    fn an_owned_contract_never_asked_for_a_pending_owner_has_no_key_count() {
+        let mut admin = ownable(B);
+        admin.pending_owner = None;
+        let r = resolve_base(A, &graph(&[(A, admin), (B, eoa())]));
+        assert_eq!(r.compromise_depth, None);
+        assert_eq!(r.depth_gap(), Some(DepthGap::PendingOwnerUnread));
+    }
+
+    /// The count and `falls` must agree with pending owners in the tree too.
+    #[test]
+    fn the_key_count_through_a_pending_owner_is_the_smallest_set_that_takes_the_root() {
+        let keys: Vec<Address> = (0x80..0x85).map(Address::with_last_byte).collect();
+        let mut admin = ownable(B);
+        admin.pending_owner = Some(PendingOwner::Address(C));
+        let mut g = graph(&[
+            (A, admin),
+            (B, safe(3, &keys[..4])),
+            (C, safe(2, &[keys[0], keys[4]])),
+        ]);
+        g.extend(keys.iter().map(|k| (Node::base(*k), eoa())));
+        let brute = (0u32..1 << keys.len())
+            .filter(|mask| {
+                let set: HashSet<Node> = (0..keys.len())
+                    .filter(|i| mask & (1 << i) != 0)
+                    .map(|i| Node::base(keys[i]))
+                    .collect();
+                crate::blast::falls(Node::base(A), &set, &g) == Some(true)
+            })
+            .map(u32::count_ones)
+            .min();
+        assert_eq!(resolve_base(A, &g).compromise_depth, brute);
+        assert_eq!(brute, Some(2));
     }
 
     /// Running out of depth on the alias itself leaves the alias as the answer, and says so.

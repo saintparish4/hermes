@@ -15,7 +15,7 @@
 use crate::rpc::{ChainRpc, delegation};
 use alloy::primitives::{Address, B256, Bytes, U256, keccak256};
 use futures::stream::{self, StreamExt};
-use hermes_core::authority::{AccountOwners, RoleGate};
+use hermes_core::authority::{AccountOwners, PendingOwner, RoleGate, SafeSetup};
 use hermes_core::{
     AuthorityKind, AuthorityProbe, Chain, Code, IMPL_SLOT, MAX_DEPTH, Node, authority_kind, edges,
     undo_l1_to_l2_alias,
@@ -76,6 +76,15 @@ pub(crate) fn decode_bytes(data: &[u8]) -> Option<&[u8]> {
     let len: usize = word_to_u256(data.get(offset..len_at)?)?.try_into().ok()?;
     data.get(len_at..len_at.checked_add(len)?)
 }
+
+/// Where a Safe keeps its transaction guard: `keccak256("guard_manager.guard.address")`, with no
+/// offset. A test derives it.
+const SAFE_GUARD_SLOT: B256 =
+    alloy::primitives::b256!("4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8");
+
+/// The head of a Safe's module list, `SENTINEL_MODULES`.
+const SAFE_SENTINEL: Address =
+    alloy::primitives::address!("0000000000000000000000000000000000000001");
 
 /// `type(IAccessControl).interfaceId`, which a test derives from the five selectors it XORs.
 const IACCESS_CONTROL: [u8; 4] = [0x79, 0x65, 0xdb, 0x0b];
@@ -279,6 +288,32 @@ impl AuthorityScanner {
         CallOutcome::Undetermined
     }
 
+    async fn read_storage(&self, node: Node, slot: B256) -> Option<B256> {
+        for attempt in 0..RETRIES {
+            match self.rpc(node.chain).await.storage(node.address, slot).await {
+                Ok(word) => return Some(word),
+                Err(e) => {
+                    note_retry(node, "eth_getStorageAt", attempt, &e);
+                    backoff(attempt).await;
+                }
+            }
+        }
+        note_undetermined(node, "eth_getStorageAt");
+        None
+    }
+
+    /// A storage word, with a zero answer read twice before I believe it. The public Base
+    /// endpoint returns zero slots for contracts that have them under load, and a zero guard
+    /// slot is the comfortable answer.
+    async fn confirmed_storage(&self, node: Node, slot: B256) -> Option<B256> {
+        let first = self.read_storage(node, slot).await?;
+        if !first.is_zero() {
+            return Some(first);
+        }
+        tokio::time::sleep(CONFIRM_DELAY).await;
+        self.read_storage(node, slot).await
+    }
+
     async fn read_code(&self, node: Node) -> Option<Bytes> {
         for attempt in 0..RETRIES {
             match self.rpc(node.chain).await.code(node.address).await {
@@ -377,10 +412,58 @@ impl AuthorityScanner {
                 .map(|v| v.saturating_to::<u64>()),
             ..Default::default()
         };
-        if authority_kind(node, &probe) == AuthorityKind::Unknown {
-            self.probe_further(node, &mut probe).await?;
+        match authority_kind(node, &probe) {
+            AuthorityKind::Safe => probe.safe_setup = self.safe_setup(node).await?,
+            AuthorityKind::Ownable => probe.pending_owner = self.pending_owner(node).await?,
+            AuthorityKind::Unknown => self.probe_further(node, &mut probe).await?,
+            _ => {}
         }
         Some(probe)
+    }
+
+    /// A Safe's modules, guard and singleton. `Some(None)` when the Safe will not list its
+    /// modules in one page, or a slot holds something no Safe writes: a partial or garbled
+    /// setup is not a setup.
+    async fn safe_setup(&self, node: Node) -> Option<Option<SafeSetup>> {
+        let page = U256::from(MAX_OWNERS);
+        let input = calldata(
+            "getModulesPaginated(address,uint256)",
+            &[SAFE_SENTINEL.into_word().0, page.to_be_bytes()],
+        );
+        let Some(listed) = self.call(node, &input).await.settled()? else {
+            return Some(None);
+        };
+        let Some(modules) = decode_address_array(&listed).filter(|m| m.len() < MAX_OWNERS) else {
+            return Some(None);
+        };
+        let guard = self.confirmed_storage(node, SAFE_GUARD_SLOT).await?;
+        let singleton = self.confirmed_storage(node, B256::ZERO).await?;
+        let guard = match word_to_address_strict(guard.as_slice()) {
+            Some(g) => Some(g),
+            None if guard.is_zero() => None,
+            None => return Some(None),
+        };
+        Some(Some(SafeSetup {
+            modules,
+            guard,
+            singleton: word_to_address_strict(singleton.as_slice()),
+        }))
+    }
+
+    /// `pendingOwner()`. A contract without the function has no one pending; a word that is
+    /// not an address leaves it unread rather than guessed.
+    async fn pending_owner(&self, node: Node) -> Option<Option<PendingOwner>> {
+        let answer = self
+            .call(node, &selector("pendingOwner()"))
+            .await
+            .settled()?;
+        Some(match answer {
+            None => Some(PendingOwner::Nobody),
+            Some(word) if word.len() == 32 && word.iter().all(|b| *b == 0) => {
+                Some(PendingOwner::Nobody)
+            }
+            Some(word) => word_to_address_strict(&word).map(PendingOwner::Address),
+        })
     }
 
     /// The kinds recognized after the first four, asked only of a contract that answered none
@@ -620,6 +703,18 @@ mod tests {
         assert_eq!(selector("entryPoint()"), [0xb0, 0xd6, 0x91, 0xfe]);
         assert_eq!(selector("nextOwnerIndex()"), [0xd9, 0x48, 0xfd, 0x2e]);
         assert_eq!(selector("DEFAULT_ADMIN_ROLE()"), [0xa2, 0x17, 0xfd, 0xdf]);
+        assert_eq!(
+            selector("getModulesPaginated(address,uint256)"),
+            [0xcc, 0x2f, 0x84, 0x52]
+        );
+        assert_eq!(selector("pendingOwner()"), [0xe3, 0x0c, 0x39, 0x78]);
+    }
+
+    /// Derived, not restated, and with no `- 1`: Safe's guard slot is the bare hash, unlike the
+    /// ERC-1967 slots.
+    #[test]
+    fn the_safe_guard_slot_is_the_bare_hash_of_its_name() {
+        assert_eq!(SAFE_GUARD_SLOT, keccak256("guard_manager.guard.address"));
     }
 
     /// `type(IAccessControl).interfaceId` is the XOR of the interface's five selectors. A wrong
@@ -695,6 +790,110 @@ mod tests {
             1,
         );
         (node, scanner)
+    }
+
+    fn scanner_over(label: &str, reads: crate::rpc::ChainReads) -> AuthorityScanner {
+        let endpoint = |reads| {
+            Endpoint::new(
+                Arc::new(crate::rpc::ReplayRpc::new(label.to_string(), reads)),
+                Duration::ZERO,
+            )
+        };
+        AuthorityScanner::new(
+            endpoint(reads),
+            endpoint(crate::rpc::ChainReads::default()),
+            1,
+        )
+    }
+
+    fn safe_reads(node: Node, modules: &[Address], guard: B256) -> crate::rpc::ChainReads {
+        let mut reads = crate::rpc::ChainReads::default();
+        let mut listed = word("40");
+        listed.extend(word("01"));
+        listed.extend(U256::from(modules.len()).to_be_bytes::<32>());
+        for m in modules {
+            listed.extend(m.into_word().0);
+        }
+        let input = calldata(
+            "getModulesPaginated(address,uint256)",
+            &[
+                SAFE_SENTINEL.into_word().0,
+                U256::from(MAX_OWNERS).to_be_bytes(),
+            ],
+        );
+        reads.call.entry(node.address).or_default().insert(
+            Bytes::from(input),
+            crate::rpc::CallRead::Ok(Bytes::from(listed)),
+        );
+        let slots = reads.storage.entry(node.address).or_default();
+        slots.insert(SAFE_GUARD_SLOT, guard);
+        let singleton = hermes_core::authority::CANONICAL_SAFE_SINGLETONS[0];
+        slots.insert(B256::ZERO, singleton.into_word());
+        reads
+    }
+
+    #[tokio::test]
+    async fn a_safe_setup_is_read_from_its_module_list_and_its_slots() {
+        let node = Node::base(address!("00000000000000000000000000000000000000c1"));
+        let module = address!("00000000000000000000000000000000000000d1");
+        let guard = address!("00000000000000000000000000000000000000e1");
+        let scanner = scanner_over("safe", safe_reads(node, &[module], guard.into_word()));
+        let setup = scanner.safe_setup(node).await.unwrap().unwrap();
+        assert_eq!(setup.modules, vec![module]);
+        assert_eq!(setup.guard, Some(guard));
+        assert_eq!(
+            setup.singleton,
+            Some(hermes_core::authority::CANONICAL_SAFE_SINGLETONS[0])
+        );
+    }
+
+    /// A guard slot holding something other than an address was not written by a Safe. Reading
+    /// it as "no guard" would be the comfortable guess.
+    #[tokio::test]
+    async fn a_garbled_guard_slot_leaves_the_setup_unread() {
+        let node = Node::base(address!("00000000000000000000000000000000000000c1"));
+        let scanner = scanner_over("safe", safe_reads(node, &[], B256::repeat_byte(0xff)));
+        assert_eq!(scanner.safe_setup(node).await, Some(None));
+    }
+
+    #[tokio::test]
+    async fn a_safe_that_will_not_list_its_modules_has_no_setup() {
+        let node = Node::base(address!("00000000000000000000000000000000000000c1"));
+        let mut reads = safe_reads(node, &[], B256::ZERO);
+        for read in reads.call.get_mut(&node.address).unwrap().values_mut() {
+            *read = crate::rpc::CallRead::Revert("execution reverted".into());
+        }
+        assert_eq!(
+            scanner_over("safe", reads).safe_setup(node).await,
+            Some(None)
+        );
+    }
+
+    #[tokio::test]
+    async fn a_pending_owner_is_read_and_zero_is_nobody() {
+        let node = Node::base(address!("00000000000000000000000000000000000000c1"));
+        let pending = address!("00000000000000000000000000000000000000d1");
+        let answer = |word: Vec<u8>| {
+            let mut reads = crate::rpc::ChainReads::default();
+            reads.call.entry(node.address).or_default().insert(
+                Bytes::from(selector("pendingOwner()").to_vec()),
+                crate::rpc::CallRead::Ok(Bytes::from(word)),
+            );
+            scanner_over("pending", reads)
+        };
+        assert_eq!(
+            answer(pending.into_word().to_vec())
+                .pending_owner(node)
+                .await,
+            Some(Some(PendingOwner::Address(pending)))
+        );
+        assert_eq!(
+            answer(word("00")).pending_owner(node).await,
+            Some(Some(PendingOwner::Nobody))
+        );
+        let mut dirty = pending.into_word().to_vec();
+        dirty[0] = 1;
+        assert_eq!(answer(dirty).pending_owner(node).await, Some(None));
     }
 
     /// A passkey is a signer with no address. Dropping it, or giving up on the account because

@@ -9,7 +9,8 @@
 //! Pure: walks stored probes, reads nothing.
 
 use crate::authority::{
-    AuthorityKind, AuthorityProbe, Code, MAX_DEPTH, authority_kind, edges, successor,
+    AuthorityKind, AuthorityProbe, Code, MAX_DEPTH, PendingOwner, authority_kind, edges, pending,
+    successor,
 };
 use crate::chain::{Chain, Node};
 use crate::store::ProxyRecord;
@@ -51,7 +52,9 @@ fn falls_at(
             AuthorityKind::Safe => {
                 let threshold = probe.threshold? as usize;
                 let owners = probe.owners.as_ref()?;
-                enough_fall(node, owners, 0, threshold, compromised, probes, depth, seen)
+                let signed =
+                    enough_fall(node, owners, 0, threshold, compromised, probes, depth, seen);
+                past_the_doors(probe, signed)
             }
             AuthorityKind::SmartAccount => {
                 let signers = probe.account_owners.as_ref()?;
@@ -72,7 +75,29 @@ fn falls_at(
                 members if members.is_empty() => Some(false),
                 members => enough_fall(node, members, 0, 1, compromised, probes, depth, seen),
             },
-            AuthorityKind::Ownable | AuthorityKind::Timelock | AuthorityKind::L1Alias => falls_at(
+            AuthorityKind::Ownable => {
+                let owner = falls_at(
+                    successor(node, probe)?,
+                    compromised,
+                    probes,
+                    depth + 1,
+                    seen,
+                );
+                match probe.pending_owner {
+                    _ if owner == Some(true) => Some(true),
+                    Some(PendingOwner::Nobody) => owner,
+                    Some(PendingOwner::Address(_)) => {
+                        let next = pending(node, probe)?;
+                        match (owner, falls_at(next, compromised, probes, depth + 1, seen)) {
+                            (_, Some(true)) => Some(true),
+                            (Some(false), Some(false)) => Some(false),
+                            _ => None,
+                        }
+                    }
+                    None => None,
+                }
+            }
+            AuthorityKind::Timelock | AuthorityKind::L1Alias => falls_at(
                 successor(node, probe)?,
                 compromised,
                 probes,
@@ -83,6 +108,19 @@ fn falls_at(
         });
     seen.remove(&node);
     answer
+}
+
+/// What the owners' signatures settle once the Safe's other doors are counted. A guard can
+/// refuse what enough owners sign, so "falls" is no longer certain; a module executes with no
+/// signature, so "does not fall" is no longer certain; and a Safe whose setup was never read
+/// could have either.
+fn past_the_doors(probe: &AuthorityProbe, signed: Option<bool>) -> Option<bool> {
+    let setup = probe.safe_setup.as_ref()?;
+    match signed? {
+        true if setup.guard.is_some() => None,
+        false if !setup.modules.is_empty() => None,
+        answer => Some(answer),
+    }
 }
 
 /// Whether at least `threshold` of these signers fall. Passkey signers have no address to
@@ -278,6 +316,7 @@ mod tests {
     fn owned_by(owner: Address) -> AuthorityProbe {
         AuthorityProbe {
             owner: Some(owner),
+            pending_owner: Some(crate::authority::PendingOwner::Nobody),
             ..Default::default()
         }
     }
@@ -286,6 +325,10 @@ mod tests {
         AuthorityProbe {
             owners: Some(owners.to_vec()),
             threshold: Some(threshold),
+            safe_setup: Some(crate::authority::SafeSetup {
+                singleton: Some(crate::authority::CANONICAL_SAFE_SINGLETONS[0]),
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }
@@ -306,6 +349,72 @@ mod tests {
         let g = graph(&[(A, owned_by(B)), (B, key()), (C, key())]);
         assert_eq!(falls(Node::base(A), &base(&[B]), &g), Some(true));
         assert_eq!(falls(Node::base(A), &base(&[C]), &g), Some(false));
+    }
+
+    fn with_setup(
+        mut probe: AuthorityProbe,
+        modules: &[Address],
+        guard: Option<Address>,
+    ) -> AuthorityProbe {
+        probe.safe_setup = Some(crate::authority::SafeSetup {
+            modules: modules.to_vec(),
+            guard,
+            singleton: None,
+        });
+        probe
+    }
+
+    /// Owners short of the threshold do not take a Safe, unless a module could: then it is
+    /// not "does not fall", the most comfortable wrong answer.
+    #[test]
+    fn a_module_turns_does_not_fall_into_undetermined() {
+        let g = graph(&[
+            (A, with_setup(safe(2, &[B, C]), &[E], None)),
+            (B, key()),
+            (C, key()),
+        ]);
+        assert_eq!(falls(Node::base(A), &base(&[B]), &g), None);
+        assert_eq!(falls(Node::base(A), &base(&[B, C]), &g), Some(true));
+    }
+
+    #[test]
+    fn a_guard_turns_falls_into_undetermined() {
+        let g = graph(&[
+            (A, with_setup(safe(1, &[B]), &[], Some(E))),
+            (B, key()),
+            (C, key()),
+        ]);
+        assert_eq!(falls(Node::base(A), &base(&[B]), &g), None);
+        assert_eq!(falls(Node::base(A), &base(&[C]), &g), Some(false));
+    }
+
+    #[test]
+    fn a_safe_whose_setup_was_never_read_never_falls_or_holds() {
+        let mut s = safe(1, &[B]);
+        s.safe_setup = None;
+        let g = graph(&[(A, s), (B, key())]);
+        assert_eq!(falls(Node::base(A), &base(&[B]), &g), None);
+    }
+
+    #[test]
+    fn a_pending_owner_takes_what_it_is_pending_for() {
+        let mut admin = owned_by(B);
+        admin.pending_owner = Some(PendingOwner::Address(C));
+        let g = graph(&[(A, admin.clone()), (B, key()), (C, key()), (D, key())]);
+        assert_eq!(falls(Node::base(A), &base(&[C]), &g), Some(true));
+        assert_eq!(falls(Node::base(A), &base(&[D]), &g), Some(false));
+        admin.pending_owner = None;
+        let g = graph(&[(A, admin), (B, key()), (D, key())]);
+        assert_eq!(
+            falls(Node::base(A), &base(&[B]), &g),
+            Some(true),
+            "the owner alone is enough"
+        );
+        assert_eq!(
+            falls(Node::base(A), &base(&[D]), &g),
+            None,
+            "an unread pending owner might be D"
+        );
     }
 
     #[test]

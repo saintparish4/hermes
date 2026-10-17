@@ -312,6 +312,7 @@ mod tests {
     use alloy::primitives::{Address, address};
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use hermes_core::authority::{CANONICAL_SAFE_SINGLETONS, PendingOwner, SafeSetup};
     use hermes_core::store::checksum;
     use hermes_core::{AuthorityProbe, Code, MODEL_VERSION, Node, ProxyRecord, Store};
     use http_body_util::BodyExt;
@@ -360,6 +361,7 @@ mod tests {
                 Node::base(BEACON),
                 AuthorityProbe {
                     owner: Some(EOA),
+                    pending_owner: Some(PendingOwner::Nobody),
                     ..Default::default()
                 },
             ),
@@ -378,6 +380,7 @@ mod tests {
                 Node::base(BEACON),
                 AuthorityProbe {
                     owner: Some(SAFE),
+                    pending_owner: Some(PendingOwner::Nobody),
                     ..Default::default()
                 },
             ),
@@ -386,6 +389,10 @@ mod tests {
                 AuthorityProbe {
                     owners: Some(vec![K1, EOA]),
                     threshold: Some(2),
+                    safe_setup: Some(SafeSetup {
+                        singleton: Some(CANONICAL_SAFE_SINGLETONS[0]),
+                        ..Default::default()
+                    }),
                     ..Default::default()
                 },
             ),

@@ -63,7 +63,13 @@ const dur = s => { if (!s) return 'none'; const d = Math.floor(s/86400), h = Mat
 const kind = t => {
   switch (t.kind) {
     case undefined: case null: return ['not read', 'other'];
-    case 'safe': return [`Safe ${t.threshold}-of-${t.owner_count}`, 'safe'];
+    case 'safe': {
+      const doors = t.modules == null ? ', modules and guard not read'
+        : (t.modules.length ? `, ${t.modules.length} module(s) that execute without signatures` : '')
+        + (t.guard ? `, guard ${t.guard}` : '');
+      const code = t.canonical_singleton === false ? ", not Safe's own code" : '';
+      return [`Safe ${t.threshold}-of-${t.owner_count}${doors}${code}`, 'safe'];
+    }
     case 'eoa': return [t.code === 'delegated' ? 'key (EIP-7702 delegated)' : 'key', 'key'];
     case 'ownable': return ['owned contract', 'other'];
     case 'timelock': return [`timelock, delay ${dur(t.min_delay)}`, 'other'];
@@ -74,7 +80,7 @@ const kind = t => {
     default: return ['unrecognized', 'other'];
   }
 };
-const rel = r => ({uups_self:'the proxy itself (UUPS)', safe_owner:'signer', account_owner:'signer', role_member:'role holder', l1_alias:'acts for', start:''}[r] ?? r);
+const rel = r => ({uups_self:'the proxy itself (UUPS)', safe_owner:'signer', account_owner:'signer', role_member:'role holder', pending_owner:'pending owner (accepts alone)', l1_alias:'acts for', start:''}[r] ?? r);
 function tree(t){
   const [k, cls] = kind(t);
   const stop = t.stopped === 'cycle' ? ' <span class="mono">[cycle]</span>' : t.stopped === 'depth' ? ' <span class="mono">[depth cap]</span>' : '';

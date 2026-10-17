@@ -351,6 +351,18 @@ pub async fn backtest(store: &Store, plan: BacktestPlan<'_>) -> anyhow::Result<(
     Ok(())
 }
 
+/// The root, upgrade role and admin role of a role-gated root whose holders are not listed.
+fn unlisted_role_gate(
+    published: Option<&hermes_core::Resolution>,
+    probes: &HashMap<Node, AuthorityProbe>,
+) -> Option<(Address, alloy::primitives::B256, alloy::primitives::B256)> {
+    let root = published?.terminal;
+    let gate = probes.get(&root)?.roles.as_ref()?;
+    gate.members
+        .is_none()
+        .then_some((root.address, gate.role, gate.admin_role))
+}
+
 /// Judge every transaction that emitted `Upgraded` from `address` in `block`.
 async fn judge_sighting(
     (reader, logs): (
@@ -393,10 +405,20 @@ async fn judge_sighting(
             Ok((tx, receipt)) => hermes_scan::backtest::observed(&tx, &receipt, &threshold_of),
             Err(_) => None,
         };
-        let Some(seen) = seen else {
+        let Some(mut seen) = seen else {
             report.unreadable += 1;
             continue;
         };
+        if let Some(gate) = unlisted_role_gate(published, &probes) {
+            let (root, role, admin) = gate;
+            let held = reader.has_role(root, role, seen.sender, block - 1).await;
+            let held_admin = reader.has_role(root, admin, seen.sender, block - 1).await;
+            seen.sender_held_root_role = match (held, held_admin) {
+                (Some(true), _) | (_, Some(true)) => Some(true),
+                (Some(false), Some(false)) => Some(false),
+                _ => None,
+            };
+        }
         let judgement = match entry {
             Some(e) => judge(e, &probes, resolution.as_ref(), &seen),
             None => Judgement::Unresolved,

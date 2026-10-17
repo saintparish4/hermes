@@ -12,7 +12,7 @@
 //!
 //! Pure: walks stored probes and what a receipt was decoded into.
 
-use crate::authority::{AuthorityKind, AuthorityProbe, Resolution, authority_kind};
+use crate::authority::{AuthorityKind, AuthorityProbe, DepthGap, Resolution, authority_kind};
 use crate::blast::reachable;
 use crate::chain::Node;
 use alloy::primitives::Address;
@@ -41,6 +41,10 @@ pub struct Observed {
     pub account_operations: Vec<Address>,
     /// `CallExecuted` emitters: timelocks that executed.
     pub timelock_executions: Vec<Address>,
+    /// For a root that is an `AccessControl` contract not listing its members: whether the
+    /// sender held its upgrade role or that role's admin role the block before, asked of the
+    /// contract with `hasRole`. `None` when not asked or not answered.
+    pub sender_held_root_role: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -68,6 +72,8 @@ pub enum Why {
     AccountOperation,
     /// A timelock in the named authority executed it.
     TimelockExecuted,
+    /// The sender held the root's upgrade role, or its admin role, the block before.
+    RoleHolderSent,
     /// A Safe in the named authority executed it, but signed by addresses that were not its
     /// owners, or fewer than its threshold, the block before.
     SignersNotTheOwners,
@@ -76,8 +82,30 @@ pub enum Why {
     /// Nothing in the named authority acted, and the transaction was sent by an account outside
     /// it.
     ActorOutsideAuthority,
-    /// The walk was truncated or cyclic, so "outside" may only be "past where I stopped".
-    WalkIncomplete,
+    /// The named authority was admittedly incomplete the block before: the walk stopped, or
+    /// some members or doors were never read. "Outside" may only be "among what I said I had
+    /// not read".
+    AuthorityIncomplete,
+}
+
+/// Whether a root's key count was unknown because part of the authority went unread, so an
+/// actor outside what was read is not evidence against it. `no_known_key` is the exception:
+/// it says nobody holds a key, and somebody upgrading contradicts exactly that.
+fn admittedly_incomplete(r: &Resolution) -> bool {
+    match r.depth_gap() {
+        None | Some(DepthGap::NoKnownKey) | Some(DepthGap::SharedSigners) => false,
+        Some(
+            DepthGap::Truncated
+            | DepthGap::Cycle
+            | DepthGap::OwnersUnknown
+            | DepthGap::RolesUnread
+            | DepthGap::AccountKeysUnread
+            | DepthGap::SafeSetupUnread
+            | DepthGap::SafeModules
+            | DepthGap::SafeGuard
+            | DepthGap::PendingOwnerUnread,
+        ) => true,
+    }
 }
 
 /// Judge one upgrade against the resolution made at the block before it.
@@ -128,8 +156,11 @@ pub fn judge(
     if sender_is_named_key {
         return Judgement::Consistent(Why::KeySent);
     }
-    if resolution.truncated || resolution.cycle {
-        return Judgement::Ambiguous(Why::WalkIncomplete);
+    if seen.sender_held_root_role == Some(true) {
+        return Judgement::Consistent(Why::RoleHolderSent);
+    }
+    if admittedly_incomplete(resolution) {
+        return Judgement::Ambiguous(Why::AuthorityIncomplete);
     }
     let anything_acted = !seen.safe_executions.is_empty()
         || !seen.module_executions.is_empty()
@@ -285,6 +316,57 @@ mod tests {
         assert_eq!(
             judge(Node::base(ADMIN), &g, None, &seen),
             Judgement::Unresolved
+        );
+    }
+
+    /// Found on the first live run (0xCb56…2086 at 22,500,009): an `AccessControl` root whose
+    /// holders are not listed, upgraded by one of them. Hermes said it had not read the holders,
+    /// so an unlisted sender is not a contradiction.
+    #[test]
+    fn an_outside_sender_under_an_authority_with_unread_members_is_ambiguous() {
+        let mut g = graph(vec![]);
+        g.insert(
+            Node::base(ADMIN),
+            AuthorityProbe {
+                roles: Some(crate::authority::RoleGate {
+                    members: None,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+        let mut seen = Observed {
+            sender: OUTSIDER,
+            ..Default::default()
+        };
+        assert_eq!(
+            run(&g, &seen),
+            Judgement::Ambiguous(Why::AuthorityIncomplete)
+        );
+        seen.sender_held_root_role = Some(true);
+        assert_eq!(run(&g, &seen), Judgement::Consistent(Why::RoleHolderSent));
+    }
+
+    /// The other side: a root Hermes said no one holds a key for, upgraded by someone.
+    #[test]
+    fn an_upgrade_under_a_root_with_no_known_key_is_a_contradiction() {
+        let dead = address!("000000000000000000000000000000000000dEaD");
+        let mut g = graph(vec![]);
+        g.get_mut(&Node::base(ADMIN)).unwrap().owner = Some(dead);
+        g.insert(
+            Node::base(dead),
+            AuthorityProbe {
+                code: Code::Absent,
+                ..Default::default()
+            },
+        );
+        let seen = Observed {
+            sender: OUTSIDER,
+            ..Default::default()
+        };
+        assert_eq!(
+            run(&g, &seen),
+            Judgement::Contradicted(Why::ActorOutsideAuthority)
         );
     }
 

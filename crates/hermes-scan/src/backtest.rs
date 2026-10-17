@@ -87,6 +87,27 @@ impl Reader {
         Some(code.as_str()? != "0x")
     }
 
+    /// Whether `who` held `role` on `contract` at `block`, by `hasRole`. `None` when it would
+    /// not say.
+    pub async fn has_role(
+        &self,
+        contract: Address,
+        role: B256,
+        who: Address,
+        block: u64,
+    ) -> Option<bool> {
+        let mut data = selector("hasRole(bytes32,address)").to_vec();
+        data.extend(role.0);
+        data.extend(who.into_word().0);
+        let call = serde_json::json!({ "to": contract, "data": format!("0x{}", alloy::hex::encode(data)) });
+        let answer = self
+            .request("eth_call", serde_json::json!([call, format!("{block:#x}")]))
+            .await
+            .ok()?;
+        let word = alloy::hex::decode(answer.as_str()?).ok()?;
+        (word.len() == 32).then(|| word[31] == 1 && word[..31].iter().all(|b| *b == 0))
+    }
+
     /// The transaction and its receipt.
     pub async fn transaction(&self, hash: B256) -> anyhow::Result<(Value, Value)> {
         let tx = self

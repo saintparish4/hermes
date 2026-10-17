@@ -449,7 +449,8 @@ mod tests {
             owner: Some(next),
             ..Default::default()
         };
-        let makers: [(&str, Box<dyn Fn(Address) -> AuthorityProbe>); 4] = [
+        type Link = Box<dyn Fn(Address) -> AuthorityProbe>;
+        let makers: [(&str, Link); 4] = [
             ("owner", Box::new(owned_by)),
             ("safe owner", Box::new(|next| safe(1, &[next]))),
             ("pending owner", Box::new(pending_to)),

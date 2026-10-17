@@ -225,9 +225,11 @@ struct Judged {
     transaction: alloy::primitives::B256,
     judgement: hermes_core::backtest::Judgement,
     observed: hermes_core::backtest::Observed,
-    /// The root and key count Hermes reads at `block - 1`.
+    /// The root and key count Hermes reads at `block - 1`, and why there is no count when
+    /// there is none.
     root: Option<Node>,
     keys_required: Option<u32>,
+    depth_unknown_reason: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -433,6 +435,7 @@ async fn judge_sighting(
             observed: seen,
             root: published.map(|r| r.terminal),
             keys_required: published.and_then(|r| r.compromise_depth),
+            depth_unknown_reason: published.and_then(|r| r.depth_gap()).map(|g| g.as_str()),
         });
     }
     Ok(())

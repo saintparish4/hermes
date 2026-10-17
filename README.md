@@ -93,6 +93,8 @@ last scan, which they say.
 | `serve` | The JSON API and the pages |
 | `migrate` | Bring the database to the current schema |
 | `record`, `verify` | Developer tools: record a block-pinned fixture; re-check the hand-verified table live |
+| `oracle` | Developer tool: put a stratified sample of key counts to an anvil fork of Base at each row's block, acting as the named keys, as each set one key short, and as a stranger |
+| `backtest` | Developer tool: judge past upgrades from their receipts against the authority Hermes reads the block before |
 
 ```
 $ hermes blast-radius 0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc     # abridged
@@ -257,7 +259,7 @@ Stack: Rust with `alloy`, `tokio`, `axum` and `sqlx` on SQLite, one binary, no e
 
 ## Testing
 
-`cargo test --workspace` runs 246 tests, all offline: pure functions, `sqlite::memory:`, temp
+`cargo test --workspace` runs 319 tests, all offline: pure functions, `sqlite::memory:`, temp
 files, or recorded chain answers replayed from `tests/fixtures/`. CI runs `cargo fmt --check`,
 `cargo clippy --workspace --all-targets -- -D warnings` (with the nursery `cognitive_complexity`
 lint denied), the tests, and a locked build, on Ubuntu and macOS.
@@ -283,6 +285,14 @@ lint denied), the tests, and a locked build, on Ubuntu and macOS.
 - **The RPC boundary.** Undetermined never becomes "no", empty reads are confirmed, replay is
   keyed rather than ordered, and a read a fixture never saw fails loudly.
 - **Policy.** Each rule passing and failing, unknown failing closed, and a misspelled rule refused.
+
+- **Judges other than Hermes.** `hermes oracle` asks the EVM: on a fork at the row's block,
+  the keys a count names must upgrade the proxy, no set one key short may, and a stranger may
+  not; a refusal counts only when a second fork repeats it. `hermes backtest` asks the chain's
+  history: whoever made a past upgrade must have been inside the authority Hermes reads the
+  block before. Results, with intervals and every contradiction read by hand, are in
+  [docs/audit](docs/audit). `cargo mutants` over the resolver, blast radius and graph left four
+  mutants alive, each equivalent and named in the commit that killed the rest.
 
 Every fix was checked by putting the bug back and watching its test fail. `hermes verify` re-checks
 the table against the live chain daily in a separate workflow that is allowed to fail: red there

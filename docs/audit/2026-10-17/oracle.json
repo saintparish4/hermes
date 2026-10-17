@@ -1,0 +1,2061 @@
+{
+  "model_version": 4,
+  "seed": 20261017,
+  "per_stratum": 12,
+  "frame": {
+    "admin_slot/eoa": 140,
+    "admin_slot/safe": 47,
+    "beacon/eoa": 102,
+    "beacon/safe": 112,
+    "beacon/smart_account": 1,
+    "uups_owner/eoa": 164,
+    "uups_owner/role_gated": 2,
+    "uups_owner/safe": 26,
+    "uups_owner/smart_account": 8
+  },
+  "verdicts": [
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0x6990723413f321e51b731cd1ff3b17a8e9b27e02",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x7FA6d7d62392F7464f87518dE13920F85b99D27C"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0x6a99481e5bc3c6bca042d659f823ac86c101a5b9",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xDecAFC622524Ab744Ca76e12c89aD16db338b3B1"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0xb9374c50cc4e13ee03b3c06121909dd31f404233",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xDecAFC622524Ab744Ca76e12c89aD16db338b3B1"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0xf397910f005151b09644228573a4353818d3755d",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x4755D28078442cb7E7Ac2409868fb3Ff1B9fA73B"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0xff70b24f1e2e432d84a6b4189b1ff4ed7b0b240b",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xDecAFC622524Ab744Ca76e12c89aD16db338b3B1"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0x31ea2dd90bd140d565726531f402d461e25a5f60",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xD0A0584Ca19068CdCc08b7834d8f8DF969D67bd5"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0xc73eed2bca773e2d7384dc7252ae6b17b944af8e",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x8277f9E1D0165d7fc8aa520Ac19F53Fe35959fDe"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0xb5d98becf9084c25781cbf9387581baeaff1a7db",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xDecAFC622524Ab744Ca76e12c89aD16db338b3B1"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0x233198ce0679d3d8b3b346b9fe3dfd3298b991eb",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x62998e172240F4CC26EC10717d16a8D4442bf2Dd"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0x000000000060f6e853447881951574cdd0663530",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x61e8AC0a758AfEEFBD556f713ecF0A8cbd00288f"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0xf3b56af46885059011d428d37c8f33645453621c",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xDecAFC622524Ab744Ca76e12c89aD16db338b3B1"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/eoa",
+      {
+        "proxy": "0x842b53755936e033428334390c4b6ea3f8d8085a",
+        "entry": "admin_slot",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x0fB3945B994776D3Bb4B2774Cd720B0CC38E88f6"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "upgrade_function_unknown",
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0xd8ba9d1a99fc21f0eca24e9b85737c28a194a4e2",
+        "entry": "admin_slot",
+        "keys_required": 3,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x7596f63E259b2a6b30bCaad0a07b72CfBB3dD4c6"
+          },
+          {
+            "chain": "base",
+            "address": "0x7b35F59D50ABE8aAF1B2461ceC85C3714FdCC539"
+          },
+          {
+            "chain": "base",
+            "address": "0xEe9Ea50d6796d2eC0F6EE18108f453942bCb6f8C"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0x4200000000000000000000000000000000000017",
+        "entry": "admin_slot",
+        "keys_required": 11,
+        "witness": [
+          {
+            "chain": "ethereum",
+            "address": "0x0E8A99738a50D523871739c6d676554b0E34252f"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x18e982274f8C5B548D5aAc7aBef44D61504e1b3E"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x1C56A6d2A6Af643cea4E62e72B75B9bDe8d62e2B"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x1c870776B168A9ffAE80c51f050C611eDd246741"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x21C7D1e6A81Daca071bA94839ab74C39A25f851F"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x3cd692eCE8b6573A2220ae00d0dEb98f0DfFA9a1"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x3Dad2200849925Bb46d9bF05aFa5f7F213F4c18E"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x5ff5C78ff194acc24C22DAaDdE4D639ebF18ACC6"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x82C80F34C4b5c153dB76122a11AaD2F77C99E766"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x99DB5BbA0db16e9aD05e3ff53310683CC3C971D2"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0xA5657B88A0130a626fcDd6aAA59522373438CdFE"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "cross_chain",
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0x0b04609aaa0f411eb9d15945978f5daa99338d08",
+        "entry": "admin_slot",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x917fa561aD29C1cCE0B3174d0849E2a36c6Fb91E"
+          },
+          {
+            "chain": "base",
+            "address": "0x9970Af0574354cD44613a97fdfb067aA1E4a73b8"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0xe2eb30975b8d063b38fdd77892f65138bc802bc7",
+        "entry": "admin_slot",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x517c74e30Bc25e88222C246EB0ff24A723A8D585"
+          },
+          {
+            "chain": "base",
+            "address": "0x9fAD5b0cd3f28b8A25E6437cFa223727bA2b7821"
+          },
+          {
+            "chain": "base",
+            "address": "0xa3711eD67042aeC276a28B3540CB9BBE2C170347"
+          },
+          {
+            "chain": "base",
+            "address": "0xaD4e8a595f82d747421283a95a1D59a4F4957419"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0x4200000000000000000000000000000000000007",
+        "entry": "admin_slot",
+        "keys_required": 11,
+        "witness": [
+          {
+            "chain": "ethereum",
+            "address": "0x0E8A99738a50D523871739c6d676554b0E34252f"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x18e982274f8C5B548D5aAc7aBef44D61504e1b3E"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x1C56A6d2A6Af643cea4E62e72B75B9bDe8d62e2B"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x1c870776B168A9ffAE80c51f050C611eDd246741"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x21C7D1e6A81Daca071bA94839ab74C39A25f851F"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x3cd692eCE8b6573A2220ae00d0dEb98f0DfFA9a1"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x3Dad2200849925Bb46d9bF05aFa5f7F213F4c18E"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x5ff5C78ff194acc24C22DAaDdE4D639ebF18ACC6"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x82C80F34C4b5c153dB76122a11AaD2F77C99E766"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x99DB5BbA0db16e9aD05e3ff53310683CC3C971D2"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0xA5657B88A0130a626fcDd6aAA59522373438CdFE"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "cross_chain",
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0x26a54955a5fb9472d3edfeac9b8e4c0ab5779ed3",
+        "entry": "admin_slot",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x517c74e30Bc25e88222C246EB0ff24A723A8D585"
+          },
+          {
+            "chain": "base",
+            "address": "0x9fAD5b0cd3f28b8A25E6437cFa223727bA2b7821"
+          },
+          {
+            "chain": "base",
+            "address": "0xa3711eD67042aeC276a28B3540CB9BBE2C170347"
+          },
+          {
+            "chain": "base",
+            "address": "0xaD4e8a595f82d747421283a95a1D59a4F4957419"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0xf60b7a4e1d53c9d82c3aca9a8ef94879c2721a5f",
+        "entry": "admin_slot",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x3b0542582F3c7dB890969b70945868F0ED3C5f1D"
+          },
+          {
+            "chain": "base",
+            "address": "0x6D80E6dFDef51c0323fb3E77e98308a1DF36715A"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "upgrade_function_unknown",
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0xa39efa7dc8c91b4152966f8c19ea55d8fc957e86",
+        "entry": "admin_slot",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x1Ff04630e3AAa9E693F2B92F1b8f6b2567B94Bb6"
+          },
+          {
+            "chain": "base",
+            "address": "0x3eD6a13046E2fAbDfCD7FeF779A58AFd45c5C7cC"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0x4200000000000000000000000000000000000011",
+        "entry": "admin_slot",
+        "keys_required": 11,
+        "witness": [
+          {
+            "chain": "ethereum",
+            "address": "0x0E8A99738a50D523871739c6d676554b0E34252f"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x18e982274f8C5B548D5aAc7aBef44D61504e1b3E"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x1C56A6d2A6Af643cea4E62e72B75B9bDe8d62e2B"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x1c870776B168A9ffAE80c51f050C611eDd246741"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x21C7D1e6A81Daca071bA94839ab74C39A25f851F"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x3cd692eCE8b6573A2220ae00d0dEb98f0DfFA9a1"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x3Dad2200849925Bb46d9bF05aFa5f7F213F4c18E"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x5ff5C78ff194acc24C22DAaDdE4D639ebF18ACC6"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x82C80F34C4b5c153dB76122a11AaD2F77C99E766"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x99DB5BbA0db16e9aD05e3ff53310683CC3C971D2"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0xA5657B88A0130a626fcDd6aAA59522373438CdFE"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "cross_chain",
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0x4200000000000000000000000000000000000016",
+        "entry": "admin_slot",
+        "keys_required": 11,
+        "witness": [
+          {
+            "chain": "ethereum",
+            "address": "0x0E8A99738a50D523871739c6d676554b0E34252f"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x18e982274f8C5B548D5aAc7aBef44D61504e1b3E"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x1C56A6d2A6Af643cea4E62e72B75B9bDe8d62e2B"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x1c870776B168A9ffAE80c51f050C611eDd246741"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x21C7D1e6A81Daca071bA94839ab74C39A25f851F"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x3cd692eCE8b6573A2220ae00d0dEb98f0DfFA9a1"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x3Dad2200849925Bb46d9bF05aFa5f7F213F4c18E"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x5ff5C78ff194acc24C22DAaDdE4D639ebF18ACC6"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x82C80F34C4b5c153dB76122a11AaD2F77C99E766"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0x99DB5BbA0db16e9aD05e3ff53310683CC3C971D2"
+          },
+          {
+            "chain": "ethereum",
+            "address": "0xA5657B88A0130a626fcDd6aAA59522373438CdFE"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "cross_chain",
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0xc3a2e9d39daf3b9797f43e5d9cff5297f16aa826",
+        "entry": "admin_slot",
+        "keys_required": 3,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x78D8c21Ca9165A69986Fe22790472F856cf71E4d"
+          },
+          {
+            "chain": "base",
+            "address": "0x7b5c0DD45f243d3cC29d0281E0F60d5DDF9C93c3"
+          },
+          {
+            "chain": "base",
+            "address": "0xdfdbCd7479D8C2183eDa079c4264B4d7003c10Cd"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "upgrade_function_unknown",
+        "planted_refused": false
+      }
+    ],
+    [
+      "admin_slot/safe",
+      {
+        "proxy": "0x8a37102bae71767a7b8a6db5387772a3daeb6f03",
+        "entry": "admin_slot",
+        "keys_required": 3,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x1fbABAbDcFE0b40a9B5D2aDB054fB74F8fE985f5"
+          },
+          {
+            "chain": "base",
+            "address": "0x340e77D5e114A9D4891d3a1EbC7419CC85Ca8E4A"
+          },
+          {
+            "chain": "base",
+            "address": "0xAD379D3275a18bd4BB741C3b291a3778D51c3304"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x46a1a53a079978d06b9fe8829a79eb06d383bb35",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x2D7Da553cF3d426b43AEB5eF7BB6499139204Ddd"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x9bcda754ee59b5555696690c2245b9d680e566c9",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xc33539b3cA1923624762E8a42D699806C865D652"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x0d8f783b73e760b1dd88e698aad1aef3cea7562b",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x25fF289bF5517ceCd001b614032ec6D880Ee755F"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x2f1f1a30ad32c88057d3c37728a66adc11d7e8c0",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xF7fB4Af6d2650B0A8E6C61564aaaCd9cDa9a34D1"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x8ef36ccf2f8f642d8704e7c98d46d98456681ada",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xAe009d532328FF09e09E5d506aB5BBeC3c25c0FF"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0xba329b18b5aeb79e0765c32ecd4608c5947a0016",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xf983C6c59685B22Dc1AD2674281B48Abcff2f941"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x605aa1931d22c4330990907d3dab9d2cea08e146",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x4ee5D45eB79aEa04C02961a2e543bbAf5cec81B3"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x8c3945fea19ddc3c58a872dd6585a12799389381",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xA064DB8fbFe520664442ee0E2650cc1C6c8f971e"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0xc340d01709f02134fe0551101eef360d06e9f3bc",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xe543bF80391E845A4C641A9f51439C79dA757b87"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0xa16f69dd5b2e90873c00703a1c621084239fd522",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xe464B756274613F821Bc3cA5c971e008C9DB127c"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x1b0a0bc858288095ab8d35133caefae398b91056",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x6ccBA91cb18b46F28528426CACE807a5C61e699d"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/eoa",
+      {
+        "proxy": "0x64854e2d30f131b3adbddb4f5bb255fcc54ba8c0",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xF7fB4Af6d2650B0A8E6C61564aaaCd9cDa9a34D1"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x6dcf86804a078a57a07e1d07a3752850bff4fd5d",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc"
+          },
+          {
+            "chain": "base",
+            "address": "0x225750e0939db00C8f0147a01C5DCfA373074f7f"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x0baceb120b7cac4873bfbacf0b4d2870484c3f8f",
+        "entry": "beacon",
+        "keys_required": 3,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x0F3d6b98a690a34a931D9A9bFFfa102C41cEe40F"
+          },
+          {
+            "chain": "base",
+            "address": "0x50e4B1422aE05e7E1102E72B2d20bc6d01fC8d0F"
+          },
+          {
+            "chain": "base",
+            "address": "0x528FcD4c9De9cC3F8574F2B7258946EcdA8Da489"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x8b678341170fe9606d0e90e79ac3a05cfc4978b5",
+        "entry": "beacon",
+        "keys_required": 3,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x0AbD1FB9B6Bc357e6412fAe32eFD6062EFb6E16E"
+          },
+          {
+            "chain": "base",
+            "address": "0x186695c8e65749AEab608A0D592bf7bBbdA78e35"
+          },
+          {
+            "chain": "base",
+            "address": "0x5ebac61293Bbf7ffCCf28398375f519e1133bFB4"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0xac7a94f4e61f7a3f7ab706baa8c2a983c7a8ffdb",
+        "entry": "beacon",
+        "keys_required": 3,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x2B9CAc7a18C70cBB6F6639571785b70a41B8AE03"
+          },
+          {
+            "chain": "base",
+            "address": "0x4851ec4e5A5B392328b825ecD94aF1cA93Fd609e"
+          },
+          {
+            "chain": "base",
+            "address": "0x837219D7a9C666F5542c4559Bf17D7B804E5c5fe"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "reinstall_unobserved",
+        "planted_refused": true
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x5d459eb9be2971cadb8b5349f4098b0233aa27d8",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x3FfC07ED6a65E379E39Bef93e713ee3Ff77a56e4"
+          },
+          {
+            "chain": "base",
+            "address": "0x550Bf893A4DC87A76F99726581c8f6bBE87a028d"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0xbea349f6326b245415ce8b5c57938a8f14796408",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc"
+          },
+          {
+            "chain": "base",
+            "address": "0x225750e0939db00C8f0147a01C5DCfA373074f7f"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x6301efc29f6ef555525c6f8a66085ca5aabda006",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc"
+          },
+          {
+            "chain": "base",
+            "address": "0x225750e0939db00C8f0147a01C5DCfA373074f7f"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x2f3e15ebc227492b08d3324ba135f19c2c4d06d1",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc"
+          },
+          {
+            "chain": "base",
+            "address": "0x225750e0939db00C8f0147a01C5DCfA373074f7f"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x3bbdef3955cebfa01234912bbd5588e9eeb29421",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc"
+          },
+          {
+            "chain": "base",
+            "address": "0x225750e0939db00C8f0147a01C5DCfA373074f7f"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x9a9e209ddf1e14819da8d759efc6dac7dc6769e9",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21f4dD6c491E04874f19F6Bc4fc1a3d0e661Ca39"
+          },
+          {
+            "chain": "base",
+            "address": "0x6668A6c1309075eB513b6C555BE95E8679d875b9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0xba6e7c6ece64148ebbe9ab5b6c16e9e415495d5a",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc"
+          },
+          {
+            "chain": "base",
+            "address": "0x225750e0939db00C8f0147a01C5DCfA373074f7f"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/safe",
+      {
+        "proxy": "0x50d8b9f47f82d9195388068fb56218e244995152",
+        "entry": "beacon",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21ebc2f23a91fD7eB8406CDCE2FD653de280B5fc"
+          },
+          {
+            "chain": "base",
+            "address": "0x225750e0939db00C8f0147a01C5DCfA373074f7f"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "beacon/smart_account",
+      {
+        "proxy": "0xb69c1b52f50878de0fee0a387f345ff9067a55a6",
+        "entry": "beacon",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xe2F54B7A7F580EbB95eEDc928cd41b2a638DcA7A"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0xd2b6d5670ca24ede33b9e285036a2470f78400e0",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xDF606c9BE86e972a5447Cf4Cb210EB34871c742F"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0xc3f7ea98c83a147ace998d6de91cb5612e5ca6fc",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xc6a39E2f9A7626612292AD56e76d738DB43596E4"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0x32e27079c408dac30f8a9ff4fe2d1eb8a1673af4",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x473C45ba792f6D21d5822f282A1Ed1310CF12523"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "restricted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0xb18949a74bc59e87992b145af3a7090e5a36d121",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xFF9d76F5ff713e1ce4808eef18908C70C786f73C"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0x28f61ad0b5fd02de121f659e792c7c14ca40edc7",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x3dAaFDb01e73B17210E11a5523c932f8A64aAC1e"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0xa51b0db5067924c53517481d3a27e17906800c18",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xf57fc7b8F823760ac6F91aed9FF150aCe5dcb566"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0xc3d963e0856a2c2d6f75c83c1355f680fd8f9f10",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x7E06eD3550381d26b690aC31afC68e86B8c5d978"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0xff6006c67803a380db25230f1aec605790c405a1",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x99834733C91aAE2f5BB0725105c9E843Cb297A27"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0x1a79e213c0b590ee6abec62f5a727ad0418b7a07",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xff26d8b28501B6b5A74F83c378faa9771B12C21d"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0x6861f8d4531fb0e4100716d1c1154cc0d5e25132",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xfC95c9Ffba80CB60f76C653EA8E5CE01253b6C6a"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0xaaea60474c6d6397607dd2bcdc610c307017d05b",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x5183E0203858aa3E3bc3A7D9cb41875a4c0A6216"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/eoa",
+      {
+        "proxy": "0x5d06c6aa817a0cbb51916345a576f4042e6ca0c7",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x3a93215c47FaA1DedA719cA153008d2FE27425fa"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/role_gated",
+      {
+        "proxy": "0xc120386ff338a960080b7458a67b269f8f3ef032",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xEe7b429Ea01F76102f053213463D4e95D5D24AE8"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/role_gated",
+      {
+        "proxy": "0x66d63089795c6697c805ffa6ade58484a4426af0",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x5393209FC04E4df32C023D9487FeD571dD0B09b2"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0xe898f4bf0ed115472a2ee553955b961e74d0f352",
+        "entry": "uups_owner",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21DE7E1F358268eD578D9636d70A8A0049147762"
+          },
+          {
+            "chain": "base",
+            "address": "0x5f6B4E34ff64DC1aE01c6ecE84151aDC4B7c8f42"
+          },
+          {
+            "chain": "base",
+            "address": "0x755d21FecDF2f90C31923752e784C278D71ADB0D"
+          },
+          {
+            "chain": "base",
+            "address": "0x7cA5E63Ff169DC419ADfA195e62e464b508410A9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0x484b18d988349040436e24a2169b8cc9f66864c1",
+        "entry": "uups_owner",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21DE7E1F358268eD578D9636d70A8A0049147762"
+          },
+          {
+            "chain": "base",
+            "address": "0x5f6B4E34ff64DC1aE01c6ecE84151aDC4B7c8f42"
+          },
+          {
+            "chain": "base",
+            "address": "0x755d21FecDF2f90C31923752e784C278D71ADB0D"
+          },
+          {
+            "chain": "base",
+            "address": "0x7cA5E63Ff169DC419ADfA195e62e464b508410A9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0x0000efc4ec03a7c47d3a38a9be7ff1d52dd01b99",
+        "entry": "uups_owner",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x213FD90494Eb547dBE8465cA907a5825C7CC09a7"
+          },
+          {
+            "chain": "base",
+            "address": "0x594780B717d6Ff49EA3A64C28bBD192a78D0dA8a"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0xcb1c06554772bc855d81a6be648cc599710e1b99",
+        "entry": "uups_owner",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x213FD90494Eb547dBE8465cA907a5825C7CC09a7"
+          },
+          {
+            "chain": "base",
+            "address": "0x594780B717d6Ff49EA3A64C28bBD192a78D0dA8a"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0x90e2c4472df225e8d31f44725b75ffaa244d5d33",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x65f4424CEa0593c53Fe4E34d55455238BD058a6c"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0x7c076352313a031a4fbd2ec913af22b9ec1871dd",
+        "entry": "uups_owner",
+        "keys_required": 2,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x036a0ff78fF35947Eb05eC7C2434DF3FeAae93Ef"
+          },
+          {
+            "chain": "base",
+            "address": "0x2Af30B4BF6528F9dB1350a8679cD453E3E334205"
+          }
+        ],
+        "sufficient": true,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "confirmed",
+        "undriveable": null,
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0xa683af62ee3c8ff4abb4c42b5db525a11f4f63ef",
+        "entry": "uups_owner",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21DE7E1F358268eD578D9636d70A8A0049147762"
+          },
+          {
+            "chain": "base",
+            "address": "0x5f6B4E34ff64DC1aE01c6ecE84151aDC4B7c8f42"
+          },
+          {
+            "chain": "base",
+            "address": "0x755d21FecDF2f90C31923752e784C278D71ADB0D"
+          },
+          {
+            "chain": "base",
+            "address": "0x7cA5E63Ff169DC419ADfA195e62e464b508410A9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0x814e04c343e18d1ac44080a14ace47bcc1427f06",
+        "entry": "uups_owner",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21DE7E1F358268eD578D9636d70A8A0049147762"
+          },
+          {
+            "chain": "base",
+            "address": "0x5f6B4E34ff64DC1aE01c6ecE84151aDC4B7c8f42"
+          },
+          {
+            "chain": "base",
+            "address": "0x755d21FecDF2f90C31923752e784C278D71ADB0D"
+          },
+          {
+            "chain": "base",
+            "address": "0x7cA5E63Ff169DC419ADfA195e62e464b508410A9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0x52d6a420963325c6b9eae0cb8560a1d22ecec940",
+        "entry": "uups_owner",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21DE7E1F358268eD578D9636d70A8A0049147762"
+          },
+          {
+            "chain": "base",
+            "address": "0x5f6B4E34ff64DC1aE01c6ecE84151aDC4B7c8f42"
+          },
+          {
+            "chain": "base",
+            "address": "0x755d21FecDF2f90C31923752e784C278D71ADB0D"
+          },
+          {
+            "chain": "base",
+            "address": "0x7cA5E63Ff169DC419ADfA195e62e464b508410A9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0x5ecec9c8d6ba223c0dd914c828c6414e385acfe8",
+        "entry": "uups_owner",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21DE7E1F358268eD578D9636d70A8A0049147762"
+          },
+          {
+            "chain": "base",
+            "address": "0x5f6B4E34ff64DC1aE01c6ecE84151aDC4B7c8f42"
+          },
+          {
+            "chain": "base",
+            "address": "0x755d21FecDF2f90C31923752e784C278D71ADB0D"
+          },
+          {
+            "chain": "base",
+            "address": "0x7cA5E63Ff169DC419ADfA195e62e464b508410A9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0xdc5abcb8423f6f7e3bb71bf7097ef0a179723627",
+        "entry": "uups_owner",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21DE7E1F358268eD578D9636d70A8A0049147762"
+          },
+          {
+            "chain": "base",
+            "address": "0x5f6B4E34ff64DC1aE01c6ecE84151aDC4B7c8f42"
+          },
+          {
+            "chain": "base",
+            "address": "0x755d21FecDF2f90C31923752e784C278D71ADB0D"
+          },
+          {
+            "chain": "base",
+            "address": "0x7cA5E63Ff169DC419ADfA195e62e464b508410A9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/safe",
+      {
+        "proxy": "0x46614f291168cca15d53e7164ac49118310a7fe3",
+        "entry": "uups_owner",
+        "keys_required": 4,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x21DE7E1F358268eD578D9636d70A8A0049147762"
+          },
+          {
+            "chain": "base",
+            "address": "0x5f6B4E34ff64DC1aE01c6ecE84151aDC4B7c8f42"
+          },
+          {
+            "chain": "base",
+            "address": "0x755d21FecDF2f90C31923752e784C278D71ADB0D"
+          },
+          {
+            "chain": "base",
+            "address": "0x7cA5E63Ff169DC419ADfA195e62e464b508410A9"
+          }
+        ],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "owned_contract",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/smart_account",
+      {
+        "proxy": "0x6bc88de5db691dee5ca062fe46f08f79005276cc",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x909fB230e9111ebC0C377BBE229a1a05BF5522E2"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/smart_account",
+      {
+        "proxy": "0xe25841bf42861c07d911282502b9276c3b20d21b",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x112f7144Db6D010f53CEBB07C12E6f0eC5a77164"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/smart_account",
+      {
+        "proxy": "0x516cab95d1b76f75f366e7d163b7f6259a39f125",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x00C7ecc4187F239e09D4cFeA5aBe6d3c18f923bC"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/smart_account",
+      {
+        "proxy": "0x9eecfffaf7472e3718a942908c85fee10495266b",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [],
+        "sufficient": null,
+        "minimal": null,
+        "stranger_refused": null,
+        "outcome": "undetermined",
+        "undriveable": "no_witness",
+        "planted_refused": false
+      }
+    ],
+    [
+      "uups_owner/smart_account",
+      {
+        "proxy": "0x1370b00036df3edfdd623607db43c871357b514c",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0xcF0Dc057a02A0ABAA362d988faf46E607aEb474b"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/smart_account",
+      {
+        "proxy": "0x01d604e2471d57eece8a6866061b06f0c2b7d5d1",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x45F779B50Dc964c869ABA4aeEb2858FD985C51f4"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/smart_account",
+      {
+        "proxy": "0x38d4479cb3accfbb54877b4fd3484b5727cb6bd7",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x39a0e6C4065d6C6c2bf7f6d081dA33C7803d2BFA"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ],
+    [
+      "uups_owner/smart_account",
+      {
+        "proxy": "0xc762becec06fbd4b33002f31da7e1866bd04cf8f",
+        "entry": "uups_owner",
+        "keys_required": 1,
+        "witness": [
+          {
+            "chain": "base",
+            "address": "0x6d6451d40B81839d3a7189c769800449C11a9448"
+          }
+        ],
+        "sufficient": false,
+        "minimal": true,
+        "stranger_refused": true,
+        "outcome": "contradicted",
+        "undriveable": null,
+        "planted_refused": true
+      }
+    ]
+  ]
+}

@@ -1,0 +1,436 @@
+{
+  "model_version": 4,
+  "seed": 20261017,
+  "candidates": 119,
+  "deployments_skipped": 104,
+  "unreadable": 0,
+  "judged": [
+    {
+      "address": "0x90e2c4472df225e8d31f44725b75ffaa244d5d33",
+      "subject": "proxy",
+      "block": 27500003,
+      "transaction": "0x90e2b52e60e4bde87b616cdfccdfc1a4c56e481ce738542e57a5d8fafe7002cf",
+      "judgement": {
+        "consistent": "safe_executed"
+      },
+      "observed": {
+        "sender": "0x8de14e014402c0677b075a69122f94c0425cc179",
+        "safe_executions": [
+          {
+            "safe": "0xc5093228529547272be5e58db15a5d36fb2c0424",
+            "signers": null
+          }
+        ],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0xc5093228529547272be5e58db15a5d36fb2c0424",
+          "0x90e2c4472df225e8d31f44725b75ffaa244d5d33",
+          "0xaa24a127d10c68c8f9ac06199aa606953cd82ee7",
+          "0xf9d64d54d32ee2bdceaabfa60c4c438e224427d0"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0xc5093228529547272bE5E58db15a5d36fb2C0424"
+      },
+      "keys_required": 2,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0x55b974d9baff3e6ba10068b71ae72ab3e700539e",
+      "subject": "proxy",
+      "block": 30000019,
+      "transaction": "0x065514ee38251801c166280ec955bfb2c323e52b8b784e1dc8a5aa89def01404",
+      "judgement": {
+        "consistent": "account_operation"
+      },
+      "observed": {
+        "sender": "0xfa06168ecc23725511709f46247e6668178a14d8",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [
+          "0x55b974d9baff3e6ba10068b71ae72ab3e700539e"
+        ],
+        "timelock_executions": [],
+        "emitters": [
+          "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789",
+          "0x55b974d9baff3e6ba10068b71ae72ab3e700539e",
+          "0xe55fee191604cdbeb874f87a28ca89aed401c303"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0x66e3C69F9Ac7B8FbD4102B916d517b9Fa3F26EEe"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0xdaad5d1d7233cf5b01275f0a45e7628dc60981e7",
+      "subject": "proxy",
+      "block": 42000059,
+      "transaction": "0x867fe4768e47fbcc31e85f0f8b56eacfe5e1908c54a0b6889c477eb6489860a5",
+      "judgement": {
+        "consistent": "key_sent"
+      },
+      "observed": {
+        "sender": "0x8107570bfdce85997ac1908cc5ad56fc63a1b943",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0xdaad5d1d7233cf5b01275f0a45e7628dc60981e7"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0x8107570bfDce85997ac1908Cc5ad56Fc63a1b943"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0xd891acc4ea2a655aa52fbf330cc7fe0a60468104",
+      "subject": "proxy",
+      "block": 30000018,
+      "transaction": "0xefd1b1730ec7096d6c2f4dada4594bb0e5d3dec80c6751441aa30ac5270c144c",
+      "judgement": {
+        "consistent": "account_operation"
+      },
+      "observed": {
+        "sender": "0x10314ac278aa9d431701f49e70273bd6e40c93f7",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [
+          "0xd891acc4ea2a655aa52fbf330cc7fe0a60468104"
+        ],
+        "timelock_executions": [],
+        "emitters": [
+          "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789",
+          "0xd891acc4ea2a655aa52fbf330cc7fe0a60468104",
+          "0xe55fee191604cdbeb874f87a28ca89aed401c303"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0x939b3f2D8eA0F4486CD190d7646c681c0E146F33"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0x3547071c9edbfaaf303142af8011a61e6b68b7f4",
+      "subject": "proxy",
+      "block": 50500011,
+      "transaction": "0xc63216cafc7403fa1fceab83c22e1f3f4922aa7d1550832e31dbb57545d73e27",
+      "judgement": "unresolved",
+      "observed": {
+        "sender": "0x2cca1bf16c03ab72b7bb678e1b6345f792b1aa0d",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0x3547071c9edbfaaf303142af8011a61e6b68b7f4"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": null,
+      "keys_required": null,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0xcb56c92565b4dc3ab3dd9c7638c945a2da062086",
+      "subject": "proxy",
+      "block": 22500009,
+      "transaction": "0xc312c8a75d1351e1749c8a128e8dc7f1b5f11ec3b8134ad752f4f54d9e6f0ca3",
+      "judgement": {
+        "consistent": "role_holder_sent"
+      },
+      "observed": {
+        "sender": "0xb6bf7e8ed8bb62d47ff5f256bfd08955e43092d7",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0xcb56c92565b4dc3ab3dd9c7638c945a2da062086"
+        ],
+        "sender_held_root_role": true
+      },
+      "root": {
+        "chain": "base",
+        "address": "0xCb56c92565B4Dc3aB3Dd9C7638c945A2DA062086"
+      },
+      "keys_required": null,
+      "depth_unknown_reason": "roles_unread"
+    },
+    {
+      "address": "0xe46bfafaedeb9ca98424860426e0093345bf2ae1",
+      "subject": "proxy",
+      "block": 31000068,
+      "transaction": "0xfdab1e50c1ed248b6f12268dda31e561266319f6c8a44249aed3a43d9656667f",
+      "judgement": {
+        "consistent": "key_sent"
+      },
+      "observed": {
+        "sender": "0xfcc65cb843f0667883f3ac805291511c76b0b5ef",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0xe46bfafaedeb9ca98424860426e0093345bf2ae1"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0xFcc65cb843f0667883f3Ac805291511c76B0B5EF"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0x734a5c5d67e186d01389419b3f9d8de1a163445b",
+      "subject": "proxy",
+      "block": 29000068,
+      "transaction": "0x3b98b4df9996cc01d22b0df7643870763cb42868a1606923818634767d7dea40",
+      "judgement": {
+        "consistent": "key_sent"
+      },
+      "observed": {
+        "sender": "0xbd51f582d65b3ad6065c34fdf1ecd2bd4d3bc58a",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0x734a5c5d67e186d01389419b3f9d8de1a163445b"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0xbd51F582d65B3ad6065c34fdF1Ecd2bd4d3BC58A"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0xaa24a127d10c68c8f9ac06199aa606953cd82ee7",
+      "subject": "proxy",
+      "block": 27500003,
+      "transaction": "0x90e2b52e60e4bde87b616cdfccdfc1a4c56e481ce738542e57a5d8fafe7002cf",
+      "judgement": {
+        "consistent": "safe_executed"
+      },
+      "observed": {
+        "sender": "0x8de14e014402c0677b075a69122f94c0425cc179",
+        "safe_executions": [
+          {
+            "safe": "0xc5093228529547272be5e58db15a5d36fb2c0424",
+            "signers": null
+          }
+        ],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0xc5093228529547272be5e58db15a5d36fb2c0424",
+          "0x90e2c4472df225e8d31f44725b75ffaa244d5d33",
+          "0xaa24a127d10c68c8f9ac06199aa606953cd82ee7",
+          "0xf9d64d54d32ee2bdceaabfa60c4c438e224427d0"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0xc5093228529547272bE5E58db15a5d36fb2C0424"
+      },
+      "keys_required": 2,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0x26a54955a5fb9472d3edfeac9b8e4c0ab5779ed3",
+      "subject": "proxy",
+      "block": 22000089,
+      "transaction": "0xfdea6db00fd56ecf1ffbe291e3c547a4c3213d6b7ab5f5383489e1ebd69adf96",
+      "judgement": {
+        "consistent": "safe_executed"
+      },
+      "observed": {
+        "sender": "0x417b4adc279743fc49f047c323fc668db9e600d8",
+        "safe_executions": [
+          {
+            "safe": "0xd6d9b28b9d99b14d199cf88f0618f128e5121b74",
+            "signers": null
+          }
+        ],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0xd6d9b28b9d99b14d199cf88f0618f128e5121b74",
+          "0x26a54955a5fb9472d3edfeac9b8e4c0ab5779ed3",
+          "0xf9d64d54d32ee2bdceaabfa60c4c438e224427d0"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0xD6d9b28b9d99B14d199CF88f0618f128E5121b74"
+      },
+      "keys_required": 4,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0xfec3070b82cb054a3d563c8dfe869fd2c3885f9a",
+      "subject": "proxy",
+      "block": 36500016,
+      "transaction": "0x26ea40e4f404ca196df8265c8ddc0842498a75530b1d656c65ecaa760b9b0607",
+      "judgement": {
+        "consistent": "delegated_key_executed"
+      },
+      "observed": {
+        "sender": "0xe0f28d9d95143858be492bdf3abbca746d0d2272",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0x1339225feaffc943a76bd063816acb6ef4a56f93",
+          "0x46a5624c2ba92c08aba4b206297052edf14baa92",
+          "0x0f5a7a0ca506bc04cffabb5cd6da36c5e235e795",
+          "0xfec3070b82cb054a3d563c8dfe869fd2c3885f9a"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0x0F5a7a0cA506BC04cFFABB5cd6Da36C5E235E795"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0x2243f7e7cffc505db1d94614f2aae8274fcda09c",
+      "subject": "proxy",
+      "block": 31000068,
+      "transaction": "0x76331d1b5c0363475d4caa3fb45b955138fec127a378a6af27b3d9ac1aa3b448",
+      "judgement": {
+        "consistent": "key_sent"
+      },
+      "observed": {
+        "sender": "0xfcc65cb843f0667883f3ac805291511c76b0b5ef",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0x2243f7e7cffc505db1d94614f2aae8274fcda09c"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0xFcc65cb843f0667883f3Ac805291511c76B0B5EF"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0x1339225feaffc943a76bd063816acb6ef4a56f93",
+      "subject": "proxy",
+      "block": 36500016,
+      "transaction": "0x26ea40e4f404ca196df8265c8ddc0842498a75530b1d656c65ecaa760b9b0607",
+      "judgement": {
+        "consistent": "delegated_key_executed"
+      },
+      "observed": {
+        "sender": "0xe0f28d9d95143858be492bdf3abbca746d0d2272",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0x1339225feaffc943a76bd063816acb6ef4a56f93",
+          "0x46a5624c2ba92c08aba4b206297052edf14baa92",
+          "0x0f5a7a0ca506bc04cffabb5cd6da36c5e235e795",
+          "0xfec3070b82cb054a3d563c8dfe869fd2c3885f9a"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0x0F5a7a0cA506BC04cFFABB5cd6Da36C5E235E795"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0xfe3af760ee665a099451b36dfa039431cf7416d6",
+      "subject": "proxy",
+      "block": 36500072,
+      "transaction": "0x8b1802c40eaa4f95233ee63887fc07f5b1d6e4f4ece770b6dda9c4125fac6d47",
+      "judgement": {
+        "consistent": "key_sent"
+      },
+      "observed": {
+        "sender": "0x1fd866a03157030a4c845879a620fcf05c700b7b",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [],
+        "timelock_executions": [],
+        "emitters": [
+          "0xfe3af760ee665a099451b36dfa039431cf7416d6",
+          "0x46a5624c2ba92c08aba4b206297052edf14baa92"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0x1fd866A03157030a4c845879A620fcF05C700b7B"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    },
+    {
+      "address": "0x136607334625f802ac2ed58d3e3f87682a21b619",
+      "subject": "proxy",
+      "block": 30000012,
+      "transaction": "0x2f29350b88644702915ef5cf0410f284be7a85d1abcae28272cc346f9c9bf50c",
+      "judgement": {
+        "consistent": "account_operation"
+      },
+      "observed": {
+        "sender": "0x10314ac278aa9d431701f49e70273bd6e40c93f7",
+        "safe_executions": [],
+        "module_executions": [],
+        "account_operations": [
+          "0x136607334625f802ac2ed58d3e3f87682a21b619"
+        ],
+        "timelock_executions": [],
+        "emitters": [
+          "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789",
+          "0x136607334625f802ac2ed58d3e3f87682a21b619",
+          "0xe55fee191604cdbeb874f87a28ca89aed401c303"
+        ],
+        "sender_held_root_role": null
+      },
+      "root": {
+        "chain": "base",
+        "address": "0xC02de02a549d7919840b247310d7FCcaBe0d7b54"
+      },
+      "keys_required": 1,
+      "depth_unknown_reason": null
+    }
+  ]
+}

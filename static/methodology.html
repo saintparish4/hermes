@@ -106,6 +106,18 @@ enough alone (one signer of a 2-of-5), and those where the walk cannot tell. A k
 both chains, since one private key signs for its address everywhere. Nothing is added up across
 groups, and no figure is a dollar figure.</p>
 
+<h2>How the index is checked</h2>
+<p>A key count is Hermes's arithmetic over what contracts said about themselves, so it is also
+checked against two things Hermes did not produce. On a fork of Base at the block a row was read
+at, the oracle acts as exactly the keys the count names and sends the real upgrade through every
+layer, then tries again with each key missing, then as a stranger: confirmed means the named keys
+upgrade the proxy, no set one short does, and a stranger cannot. A walk through Ethereum, an owned
+contract that would have to make a call, or a timelock leaves the row undetermined. The backtest
+reads past upgrades from the chain's own receipts and asks whether whoever acted was inside the
+authority Hermes reads the block before; when only a trace could say, the answer is ambiguous.
+Neither turns an unknown into a pass. Results are published with their intervals in the
+repository's <code>docs/audit</code>.</p>
+
 <p class="sub">The limitations are listed in full in
 <a href="https://github.com/saintparish4/hermes/blob/master/LIMITATIONS.md">LIMITATIONS.md</a>.</p>
 </div>

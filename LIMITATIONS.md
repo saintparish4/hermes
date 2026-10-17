@@ -23,7 +23,10 @@ a finding about any contract.
   precedence among interfaces is fixed and documented, and an ambiguous contract loses confidence.
 - **UUPS authority is inferred.** For a UUPS proxy, `owner()`, an `AccessControl` role or an
   account's signers are taken to be what `_authorizeUpgrade` checks. That is a convention, which
-  is why every UUPS root is at most Medium.
+  is why every UUPS root is at most Medium. On 2026-10-17 a fork confirmed it for 5 of 12 sampled
+  UUPS rows whose owner is a key and 0 of 7 whose owner is a smart account: the rest gate
+  upgrades on another contract or on a registry of approved implementations
+  (`docs/audit/2026-10-17`).
 - **Timelocks are one node.** The delay is read; the proposer and executor role holders are not,
   because `TimelockController` does not enumerate them. A timelock root has no key count
   (`roles_unread`).
@@ -66,9 +69,11 @@ a finding about any contract.
 - **Only single-read changes are pinned to a block**: an owner, a Safe threshold or signer, a
   timelock delay, a slot. A changed root or key count, a smart account's signers and a role's
   holders keep the two scan blocks that bracket them.
-- **Full-history backfill needs a keyed endpoint.** The public Base endpoint accepts `eth_getLogs`
-  over about 2,000 blocks at a time, even for one address (measured 2026-09-30), so reading a
-  contract's whole event history costs tens of thousands of calls.
+- **Full-history backfill needs a keyed endpoint.** On 2026-09-30 the public Base endpoint
+  accepted `eth_getLogs` over about 2,000 blocks at a time, even for one address, so reading a
+  contract's whole event history cost tens of thousands of calls. On 2026-10-17 it refused every
+  `eth_getLogs`, one block for one address included (`-32011 request limit reached`), while
+  answering other methods; discovery and the backtest then need another endpoint for logs.
 
 ## Reading the chain
 
@@ -77,6 +82,24 @@ a finding about any contract.
   become verdicts, and a node that will not answer produces "undetermined", never "no".
 - **Multicall3 is not used for probes.** One contract that burns all gas in a batched call starves
   the calls after it, which would turn real answers into false "no"s. Probes are sequential.
+
+## How the index is checked against something other than itself
+
+- **The fork oracle (`hermes oracle`) tests counts on Base only.** It acts as the keys a count
+  names on an anvil fork at the row's block, then as each set one key short, then as a stranger.
+  A walk that crosses to Ethereum through an alias, passes an owned contract that would itself
+  have to make a call, or reaches a timelock is undetermined, not confirmed. It tests that the
+  named set suffices and that removing any one of its keys does not; it does not search every
+  other key set for a smaller one, and it can only see a door Hermes does not model when that
+  door is open to anyone. It knows the OpenZeppelin upgrade functions and two beacon variants;
+  a function it does not find in the code leaves the row undetermined.
+- **The backtest (`hermes backtest`) reads receipts, not traces.** It finds past upgrades in
+  discovery's sample windows, sets deployments aside, and judges each against what Hermes reads
+  the block before. When something outside the named authority executed, only a trace could say
+  whether it stood between the sender and the proxy, so the row is ambiguous, never consistent.
+  Under an authority Hermes said it had not fully read (unlisted role holders, unread signers,
+  an unread module list), an outside sender is ambiguous too, except that a role contract is
+  asked `hasRole` for the sender at that block.
 
 ## Claims Hermes does not make
 

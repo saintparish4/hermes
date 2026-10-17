@@ -81,6 +81,9 @@ pub trait Evm: Send + Sync {
     fn storage(&self, address: Address, slot: B256) -> BoxFuture<'_, anyhow::Result<B256>>;
     fn set_code(&self, address: Address, code: Bytes) -> BoxFuture<'_, anyhow::Result<()>>;
     fn code(&self, address: Address) -> BoxFuture<'_, anyhow::Result<Bytes>>;
+    /// Whether `address` emitted `Upgraded` in the latest block, which on an automining fork is
+    /// the last transaction sent.
+    fn upgrade_logged(&self, address: Address) -> BoxFuture<'_, anyhow::Result<bool>>;
 }
 
 /// An anvil fork, reached over JSON-RPC and started with `--auto-impersonate`.
@@ -184,6 +187,21 @@ impl Evm for AnvilEvm {
         Box::pin(async move {
             self.request("eth_getCode", serde_json::json!([address, "latest"]))
                 .await
+        })
+    }
+
+    fn upgrade_logged(&self, address: Address) -> BoxFuture<'_, anyhow::Result<bool>> {
+        Box::pin(async move {
+            let filter = serde_json::json!({
+                "address": address,
+                "fromBlock": "latest",
+                "toBlock": "latest",
+                "topics": [crate::discover::UPGRADED],
+            });
+            let logs: Vec<serde_json::Value> = self
+                .request("eth_getLogs", serde_json::json!([filter]))
+                .await?;
+            Ok(!logs.is_empty())
         })
     }
 }
@@ -291,6 +309,9 @@ pub enum Undriveable {
     /// None of the upgrade functions I know is in the code that would run it. A call to a
     /// function that is not there reverts for everyone, which says nothing about keys.
     UpgradeFunctionUnknown,
+    /// Re-installing the current implementation went through without the contract announcing
+    /// an upgrade, so the fork shows no upgrade to judge.
+    ReinstallUnobserved,
 }
 
 impl Undriveable {
@@ -309,6 +330,7 @@ impl Undriveable {
             Self::NotAtOneBlock => "not_at_one_block",
             Self::ReplayDiffers => "replay_differs",
             Self::UpgradeFunctionUnknown => "upgrade_function_unknown",
+            Self::ReinstallUnobserved => "reinstall_unobserved",
         }
     }
 }
@@ -378,6 +400,15 @@ pub fn approved_signatures(mut owners: Vec<Address>) -> Vec<u8> {
         .collect()
 }
 
+/// What a trial installs. The planted implementation first; when the contract refuses it, the
+/// implementation already there, which any allowlist or code check has to accept, so a refusal
+/// then is about who asked, not what they asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Install {
+    new: Address,
+    reinstall: bool,
+}
+
 /// The upgrade calls to try at an entry, as (target, calldata), and the actor that has to send
 /// them. Several, because ProxyAdmin and proxy versions disagree on the function name: OZ 4
 /// has `upgrade` and `upgradeTo`, OZ 5 only the `AndCall` forms.
@@ -385,8 +416,8 @@ fn upgrade_calls(
     entry: UpgradeEntry,
     proxy: Address,
     entry_is_contract_with_owner: bool,
+    new: Address,
 ) -> Vec<(Address, Bytes)> {
-    let new = planted_implementation();
     let on_proxy = vec![
         (
             proxy,
@@ -699,9 +730,21 @@ fn fork(e: anyhow::Error) -> Undriveable {
     Undriveable::Fork
 }
 
-/// Whether the proxy now runs the planted implementation.
-async fn moved(evm: &dyn Evm, entry: UpgradeEntry, proxy: Address) -> Acted {
-    let new = planted_implementation().into_word();
+/// Whether the upgrade happened: the proxy now runs the planted implementation, or, when
+/// re-installing, the contract announced the upgrade. A re-install that went through without
+/// announcing one is not evidence either way.
+async fn moved(evm: &dyn Evm, entry: UpgradeEntry, proxy: Address, install: Install) -> Acted {
+    let subject = match entry {
+        UpgradeEntry::Beacon(beacon) => beacon,
+        UpgradeEntry::AdminSlot(_) | UpgradeEntry::UupsOwner(_) => proxy,
+    };
+    if install.reinstall {
+        return match evm.upgrade_logged(subject).await.map_err(fork)? {
+            true => Ok(true),
+            false => Err(Undriveable::ReinstallUnobserved),
+        };
+    }
+    let new = install.new.into_word();
     match entry {
         UpgradeEntry::Beacon(beacon) => {
             let answer = evm
@@ -716,6 +759,27 @@ async fn moved(evm: &dyn Evm, entry: UpgradeEntry, proxy: Address) -> Acted {
     }
 }
 
+/// The implementation in place now: the beacon's, or the proxy's slot.
+async fn current_implementation(
+    evm: &dyn Evm,
+    entry: UpgradeEntry,
+    proxy: Address,
+) -> Option<Address> {
+    let word = match entry {
+        UpgradeEntry::Beacon(beacon) => {
+            let answer = evm
+                .call(beacon, Bytes::from(selector("implementation()").to_vec()))
+                .await
+                .ok()?;
+            crate::resolve::word_to_address_strict(&answer)?
+        }
+        UpgradeEntry::AdminSlot(_) | UpgradeEntry::UupsOwner(_) => {
+            Address::from_word(evm.storage(proxy, IMPL_SLOT).await.ok()?)
+        }
+    };
+    (!word.is_zero()).then_some(word)
+}
+
 /// Try to upgrade `proxy` holding exactly `keys`, leaving the fork as it was found.
 async fn trial(
     evm: &dyn Evm,
@@ -723,29 +787,32 @@ async fn trial(
     entry: UpgradeEntry,
     proxy: Address,
     keys: &HashSet<Node>,
+    install: Install,
 ) -> Acted {
     let driver = Driver { evm, probes, keys };
     let outer = evm.snapshot().await.map_err(fork)?;
-    let result = attempt(&driver, entry, proxy).await;
+    let result = attempt(&driver, entry, proxy, install).await;
     evm.revert(outer).await.map_err(fork)?;
     result
 }
 
-async fn attempt(driver: &Driver<'_>, entry: UpgradeEntry, proxy: Address) -> Acted {
+async fn attempt(
+    driver: &Driver<'_>,
+    entry: UpgradeEntry,
+    proxy: Address,
+    install: Install,
+) -> Acted {
     let (actor, owned) = driver.actor_at(entry).await?;
-    for (to, data) in present(driver.evm, upgrade_calls(entry, proxy, owned)).await? {
+    let calls = upgrade_calls(entry, proxy, owned, install.new);
+    for (to, data) in present(driver.evm, calls).await? {
         let inner = driver.evm.snapshot().await.map_err(fork)?;
-        let sent = driver.perform(actor, to, data, 1).await;
-        let upgraded = match sent {
-            Ok(true) => moved(driver.evm, entry, proxy).await?,
-            Ok(false) => false,
-            Err(e) => {
-                driver.evm.revert(inner).await.map_err(fork)?;
-                return Err(e);
-            }
+        let upgraded = match driver.perform(actor, to, data, 1).await {
+            Ok(true) => moved(driver.evm, entry, proxy, install).await,
+            Ok(false) => Ok(false),
+            Err(e) => Err(e),
         };
         driver.evm.revert(inner).await.map_err(fork)?;
-        if upgraded {
+        if upgraded? {
             return Ok(true);
         }
     }
@@ -753,9 +820,14 @@ async fn attempt(driver: &Driver<'_>, entry: UpgradeEntry, proxy: Address) -> Ac
 }
 
 /// The same upgrade calls, sent by an address that holds nothing.
-async fn stranger_trial(evm: &dyn Evm, entry: UpgradeEntry, proxy: Address) -> Acted {
-    let mut calls = upgrade_calls(entry, proxy, true);
-    calls.extend(upgrade_calls(entry, proxy, false));
+async fn stranger_trial(
+    evm: &dyn Evm,
+    entry: UpgradeEntry,
+    proxy: Address,
+    install: Install,
+) -> Acted {
+    let mut calls = upgrade_calls(entry, proxy, true, install.new);
+    calls.extend(upgrade_calls(entry, proxy, false, install.new));
     let calls = match present(evm, calls).await {
         Ok(calls) => calls,
         // Nothing I know how to call is there, so a stranger has nothing to try; the witness
@@ -766,9 +838,13 @@ async fn stranger_trial(evm: &dyn Evm, entry: UpgradeEntry, proxy: Address) -> A
     for (to, data) in calls {
         let snap = evm.snapshot().await.map_err(fork)?;
         let sent = evm.send(stranger(), to, data).await.map_err(fork)?;
-        let upgraded = sent && moved(evm, entry, proxy).await?;
+        let upgraded = if sent {
+            moved(evm, entry, proxy, install).await
+        } else {
+            Ok(false)
+        };
         evm.revert(snap).await.map_err(fork)?;
-        if upgraded {
+        if upgraded? {
             return Ok(true);
         }
     }
@@ -781,6 +857,10 @@ async fn stranger_trial(evm: &dyn Evm, entry: UpgradeEntry, proxy: Address) -> A
 pub enum Outcome {
     /// The named keys upgrade it, no set one short of them does, and a stranger cannot.
     Confirmed,
+    /// The contract refused the planted implementation, and re-installing the one in place went
+    /// the way a confirmation goes: the named keys can, one key short cannot, a stranger cannot.
+    /// They are the gate, and what they can install is limited by the contract itself.
+    Restricted,
     /// The fork disagreed with the count somewhere.
     Contradicted,
     /// Some trial could not be run.
@@ -803,6 +883,9 @@ pub struct Verdict {
     pub outcome: Outcome,
     /// Why some trial could not be run.
     pub undriveable: Option<Undriveable>,
+    /// Whether the planted implementation was refused, so the three trials above are the
+    /// re-install of the implementation in place.
+    pub planted_refused: bool,
 }
 
 /// Put one proxy's key count to the fork.
@@ -823,6 +906,7 @@ pub async fn check(
         stranger_refused: None,
         outcome: Outcome::Undetermined,
         undriveable: None,
+        planted_refused: false,
     };
     let Some(witness) = hermes_core::authority::witness(entry.start(), keys_required, probes)
     else {
@@ -835,41 +919,71 @@ pub async fn check(
         return verdict;
     }
     let all: HashSet<Node> = witness.iter().copied().collect();
-    match trial(evm, probes, entry, proxy, &all).await {
-        Ok(upgraded) => verdict.sufficient = Some(upgraded),
+    let planted = Install {
+        new: planted_implementation(),
+        reinstall: false,
+    };
+    let install = match trial(evm, probes, entry, proxy, &all, planted).await {
+        Ok(true) => planted,
+        Ok(false) => match current_implementation(evm, entry, proxy).await {
+            Some(new) => {
+                verdict.planted_refused = true;
+                Install {
+                    new,
+                    reinstall: true,
+                }
+            }
+            None => {
+                verdict.sufficient = Some(false);
+                return finish(verdict);
+            }
+        },
         Err(why) => {
             verdict.undriveable = Some(why);
             return verdict;
         }
+    };
+    if let Err(why) = run_trials(evm, probes, entry, proxy, &witness, install, &mut verdict).await {
+        verdict.undriveable = Some(why);
+        return verdict;
     }
+    finish(verdict)
+}
+
+/// The three trials with one installation: the named keys, each set one key short, a stranger.
+async fn run_trials(
+    evm: &dyn Evm,
+    probes: &HashMap<Node, AuthorityProbe>,
+    entry: UpgradeEntry,
+    proxy: Address,
+    witness: &[Node],
+    install: Install,
+    verdict: &mut Verdict,
+) -> Result<(), Undriveable> {
+    let all: HashSet<Node> = witness.iter().copied().collect();
+    verdict.sufficient = Some(trial(evm, probes, entry, proxy, &all, install).await?);
     let mut minimal = true;
-    for key in &witness {
+    for key in witness {
         let mut short = all.clone();
         short.remove(key);
-        match trial(evm, probes, entry, proxy, &short).await {
-            Ok(true) => minimal = false,
-            Ok(false) => {}
-            Err(why) => {
-                verdict.undriveable = Some(why);
-                return verdict;
-            }
+        if trial(evm, probes, entry, proxy, &short, install).await? {
+            minimal = false;
         }
     }
     verdict.minimal = Some(minimal);
-    match stranger_trial(evm, entry, proxy).await {
-        Ok(upgraded) => verdict.stranger_refused = Some(!upgraded),
-        Err(why) => {
-            verdict.undriveable = Some(why);
-            return verdict;
-        }
-    }
-    verdict.outcome = if verdict.sufficient == Some(true)
+    verdict.stranger_refused = Some(!stranger_trial(evm, entry, proxy, install).await?);
+    Ok(())
+}
+
+/// The outcome the three trials add up to.
+fn finish(mut verdict: Verdict) -> Verdict {
+    let held = verdict.sufficient == Some(true)
         && verdict.minimal == Some(true)
-        && verdict.stranger_refused == Some(true)
-    {
-        Outcome::Confirmed
-    } else {
-        Outcome::Contradicted
+        && verdict.stranger_refused == Some(true);
+    verdict.outcome = match (held, verdict.planted_refused) {
+        (true, false) => Outcome::Confirmed,
+        (true, true) => Outcome::Restricted,
+        (false, _) => Outcome::Contradicted,
     };
     verdict
 }
@@ -891,6 +1005,7 @@ pub fn not_run(
         stranger_refused: None,
         outcome: Outcome::Undetermined,
         undriveable: Some(why),
+        planted_refused: false,
     }
 }
 
@@ -978,6 +1093,8 @@ mod tests {
         anyone_upgrades: bool,
         /// The functions its code dispatches.
         functions: &'static [&'static str],
+        /// Refuses to install the planted implementation, as an allowlist would.
+        refuses_planted: bool,
         state: Mutex<ToyState>,
     }
 
@@ -986,12 +1103,34 @@ mod tests {
         approvals: HashSet<Address>,
         implementation: B256,
         snapshots: Vec<(HashSet<Address>, B256)>,
+        /// Whether the last transaction announced an upgrade.
+        logged: bool,
+    }
+
+    /// The implementation an upgrade call installs, reached through an `execTransaction`
+    /// wrapping it if there is one.
+    fn installs(data: &[u8]) -> Option<Address> {
+        let upgrade = selector("upgradeToAndCall(address,bytes)");
+        if data.starts_with(&upgrade) {
+            return Some(Address::from_slice(&data[16..36]));
+        }
+        let args = data.get(4..)?;
+        let offset: usize = U256::from_be_slice(args.get(64..96)?).to();
+        let len: usize = U256::from_be_slice(args.get(offset..offset + 32)?).to();
+        installs(args.get(offset + 32..offset + 32 + len)?)
     }
 
     impl Toy {
-        fn upgrade_lands(&self, from: Address, data: &Bytes) -> bool {
-            let is_upgrade = data.starts_with(&selector("upgradeToAndCall(address,bytes)"));
-            is_upgrade && (self.anyone_upgrades || from == self.admin)
+        /// What an upgrade installs if the toy lets it: `None` for a refusal.
+        fn accepts(&self, data: &[u8]) -> Option<B256> {
+            let new = installs(data)?;
+            (!(self.refuses_planted && new == planted_implementation())).then(|| new.into_word())
+        }
+
+        fn upgrade_lands(&self, from: Address, data: &Bytes) -> Option<B256> {
+            (self.anyone_upgrades || from == self.admin)
+                .then(|| self.accepts(data))
+                .flatten()
         }
     }
 
@@ -1019,23 +1158,25 @@ mod tests {
             data: Bytes,
         ) -> BoxFuture<'_, anyhow::Result<bool>> {
             let mut s = self.state.lock().unwrap();
-            let ok = if to == self.safe && data.starts_with(&selector("approveHash(bytes32)")) {
-                if self.owners.contains(&from) {
-                    s.approvals.insert(from);
-                }
-                self.owners.contains(&from)
-            } else if to == self.safe {
-                let lands = s.approvals.len() >= self.need;
-                if lands {
-                    s.implementation = planted_implementation().into_word();
-                }
-                lands
-            } else if self.upgrade_lands(from, &data) {
-                s.implementation = planted_implementation().into_word();
-                true
-            } else {
-                false
-            };
+            s.logged = false;
+            let installed =
+                if to == self.safe && data.starts_with(&selector("approveHash(bytes32)")) {
+                    if self.owners.contains(&from) {
+                        s.approvals.insert(from);
+                    }
+                    return Box::pin(std::future::ready(Ok(self.owners.contains(&from))));
+                } else if to == self.safe {
+                    (s.approvals.len() >= self.need)
+                        .then(|| self.accepts(&data))
+                        .flatten()
+                } else {
+                    self.upgrade_lands(from, &data)
+                };
+            if let Some(new) = installed {
+                s.implementation = new;
+                s.logged = true;
+            }
+            let ok = installed.is_some();
             Box::pin(async move { Ok(ok) })
         }
         fn call(&self, _to: Address, _data: Bytes) -> BoxFuture<'_, anyhow::Result<Bytes>> {
@@ -1047,6 +1188,10 @@ mod tests {
         }
         fn set_code(&self, _a: Address, _code: Bytes) -> BoxFuture<'_, anyhow::Result<()>> {
             Box::pin(async { Ok(()) })
+        }
+        fn upgrade_logged(&self, _a: Address) -> BoxFuture<'_, anyhow::Result<bool>> {
+            let logged = self.state.lock().unwrap().logged;
+            Box::pin(async move { Ok(logged) })
         }
         fn code(&self, _a: Address) -> BoxFuture<'_, anyhow::Result<Bytes>> {
             let mut code = Vec::new();
@@ -1108,7 +1253,11 @@ mod tests {
             need,
             anyone_upgrades,
             functions: &["upgradeToAndCall(address,bytes)"],
-            state: Mutex::default(),
+            refuses_planted: false,
+            state: Mutex::new(ToyState {
+                implementation: Address::with_last_byte(0xab).into_word(),
+                ..Default::default()
+            }),
         }
     }
 
@@ -1204,6 +1353,41 @@ mod tests {
         let evm = toy(1, false);
         let v = check(&evm, &g, UpgradeEntry::UupsOwner(PROXY), PROXY, 1).await;
         assert_eq!(v.outcome, Outcome::Undetermined, "{v:?}");
+    }
+
+    /// An allowlist that refuses the planted code is not the keys failing: re-installing what is
+    /// there goes through for the named keys only, so the row is restricted, not contradicted.
+    /// (Found on the first full run, 2026-10-17: `NotApprovedImplementation`,
+    /// `UpgradeNotWhitelisted`, `WrongBeacon`.)
+    #[tokio::test]
+    async fn an_allowlist_that_refuses_the_planted_code_is_restricted_not_contradicted() {
+        let mut evm = toy(2, false);
+        evm.refuses_planted = true;
+        let v = check(
+            &evm,
+            &safe_graph(2),
+            UpgradeEntry::UupsOwner(PROXY),
+            PROXY,
+            2,
+        )
+        .await;
+        assert!(v.planted_refused);
+        assert_eq!(v.outcome, Outcome::Restricted, "{v:?}");
+        let mut evm = toy(1, false);
+        evm.refuses_planted = true;
+        let v = check(
+            &evm,
+            &safe_graph(2),
+            UpgradeEntry::UupsOwner(PROXY),
+            PROXY,
+            2,
+        )
+        .await;
+        assert_eq!(
+            v.outcome,
+            Outcome::Contradicted,
+            "one key short re-installs: {v:?}"
+        );
     }
 
     /// A beacon with its own name for the upgrade function reverted for everyone and read as

@@ -164,21 +164,25 @@ async fn judge(
 }
 
 fn print_summary(frame: &BTreeMap<String, u64>, verdicts: &[(String, Verdict)]) {
-    let mut by: BTreeMap<&str, (u64, u64, u64)> = BTreeMap::new();
+    // Restricted rows are counted apart: the named keys are the gate, but the contract limits
+    // what they can install, so they are neither a plain confirmation nor a contradiction.
+    let mut by: BTreeMap<&str, (u64, u64, u64, u64)> = BTreeMap::new();
     for (s, v) in verdicts {
         let e = by.entry(s.as_str()).or_default();
         match v.outcome {
             Outcome::Confirmed => e.0 += 1,
             Outcome::Contradicted => e.1 += 1,
             Outcome::Undetermined => e.2 += 1,
+            Outcome::Restricted => e.3 += 1,
         }
     }
     println!(
-        "stratum | frame | confirmed | contradicted | undetermined | confirmed among determined (95% Wilson)"
+        "stratum | frame | confirmed | restricted | contradicted | undetermined | gate confirmed among determined (95% Wilson)"
     );
     let mut results = Vec::new();
     for (s, size) in frame {
-        let (c, x, u) = by.get(s.as_str()).copied().unwrap_or_default();
+        let (confirmed, x, u, restricted) = by.get(s.as_str()).copied().unwrap_or_default();
+        let c = confirmed + restricted;
         let r = wilson(c, c + x);
         let shown = match (r.estimate, r.low, r.high) {
             (Some(p), Some(lo), Some(hi)) => {
@@ -186,7 +190,7 @@ fn print_summary(frame: &BTreeMap<String, u64>, verdicts: &[(String, Verdict)]) 
             }
             _ => "no determined trial".into(),
         };
-        println!("{s} | {size} | {c} | {x} | {u} | {shown}");
+        println!("{s} | {size} | {confirmed} | {restricted} | {x} | {u} | {shown}");
         results.push(StratumResult {
             frame: *size,
             successes: c,
